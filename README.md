@@ -50,6 +50,9 @@ Expected output:
 aarch64-firmware: reset vector reached at EL3
   MIDR_EL1  = 0x00000000000f0510
   MPIDR_EL1 = 0x0000000080000000
+selftest: poll gives up on a stuck bit after 1000 spins: ok
+selftest: poll returns at once on a clear bit: ok
+uart: tx timeouts = 0
 milestone 0: boot OK
 ```
 
@@ -103,6 +106,7 @@ src/uart.c          PL011 driver
 src/kprintf.c       minimal printf for register dumps
 src/semihost.c      SYS_EXIT so tests get a real exit status
 include/platform.h  board memory map
+include/mmio.h      MMIO accessors and bounded polling
 include/sysreg.h    read_sysreg()/write_sysreg(), barriers
 linker.ld           flash vs. SRAM placement
 tests/run_tests.py  boots QEMU, checks UART output against per-milestone patterns
