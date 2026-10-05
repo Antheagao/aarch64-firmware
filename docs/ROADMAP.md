@@ -187,6 +187,7 @@ If you show one file in an interview, make it this one.
   Report IPC, cache misses, and speedup.
 
 **Done when** `docs/perf.md` has a table with QEMU instruction counts and real-hardware `perf stat` numbers, plus a paragraph explaining the differences.
+`docs/PERFORMANCE.md` describes the method.
 
 ## S1: Stretch: boot Linux on this firmware
 
