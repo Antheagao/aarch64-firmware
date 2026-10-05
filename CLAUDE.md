@@ -27,6 +27,11 @@ That is exactly what CI runs.
 - `tests/run_tests.py`: boots QEMU and matches UART output against the `CHECKS` list
 - `docs/ROADMAP.md`: milestone specs with "done when" tests
 - `docs/CONTRIBUTING.md`: branch, commit, and PR rules
+- `docs/ARCHITECTURE.md`: exception levels, boot flow, module boundaries, design principles
+- `docs/CODING_STANDARDS.md`: C and assembly rules, algorithm and data structure choices
+- `docs/TESTING.md`: test layers, writing checks, debugging failures
+- `docs/PERFORMANCE.md`: how to measure and report performance
+- `.claude/rules/`: short rules that load only when matching files are edited
 
 ## Hard rules
 
