@@ -21,6 +21,10 @@ CHECKS = [
     ("boots from the reset vector at EL3", r"reset vector reached at EL3"),
     ("reads MIDR_EL1", r"MIDR_EL1  = 0x[0-9a-f]{16}"),
     ("primary CPU is affinity 0.0.0", r"MPIDR_EL1 = 0x[0-9a-f]{10}000000"),
+    ("bounded poll gives up on a stuck bit",
+     r"selftest: poll gives up on a stuck bit after \d+ spins: ok"),
+    ("bounded poll returns on a clear bit", r"selftest: poll returns at once on a clear bit: ok"),
+    ("no UART waits timed out during boot", r"uart: tx timeouts = 0\b"),
     ("milestone 0 completes", r"milestone 0: boot OK"),
 ]
 
