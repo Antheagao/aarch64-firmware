@@ -1,0 +1,32 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  boot:
+    name: boot (${{ matrix.toolchain }}, -cpu ${{ matrix.cpu }})
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        toolchain: [gcc, llvm]
+        cpu: [max, cortex-a57]   # Armv9 feature set vs. a plain Armv8.0 core
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install cross toolchains and QEMU
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu clang lld llvm qemu-system-arm
+      - name: Build, boot in QEMU, and assert on UART output
+        run: make test CPU=${{ matrix.cpu }} LLVM=${{ matrix.toolchain == 'llvm' && '1' || '0' }}
