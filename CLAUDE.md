@@ -58,6 +58,9 @@ The short version:
 - Commit messages follow Conventional Commits: `type(scope): imperative summary`.
 - Keep commits small, and make sure each one builds and passes `make test`.
 - Never add AI co-author trailers or "Generated with" lines to commits, PRs, or comments.
+  `.claude/settings.json` turns off Claude Code's own attribution; keep it that way.
+  The GitHub connector still appends a footer when it creates a PR, so update the PR description right after creating it to remove the footer.
+- Commit as the owner: `git config user.name "Anthony Mendez"` and `git config user.email "61263579+Antheagao@users.noreply.github.com"`.
 - Open a PR early, merge it once CI is green with a merge commit, then delete the branch.
   Merge often: one milestone step per PR, not a whole milestone.
 
