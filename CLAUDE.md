@@ -61,6 +61,16 @@ The short version:
 - Open a PR early, merge it once CI is green with a merge commit, then delete the branch.
   Merge often: one milestone step per PR, not a whole milestone.
 
+## Work queue
+
+Long-running work uses the `campaign-loop` skill in `.claude/skills/campaign-loop/SKILL.md`, copied from the owner's `claude-brain` repo.
+The queue is `notes/firmware-current.md`, and parked rows are in `notes/firmware-future.md`.
+
+- Take the top workable row, skipping `[BLOCKED: ...]` and `[USER-GATED]` rows.
+- One batch is one branch, one PR, and one merge.
+- Update the queue file in the same commit as the code that completes the row.
+- If `claude-brain` is installed on the machine, set the loop-mode status marker when a loop starts and clear it when it stops.
+
 ## Writing style
 
 - Never use the em dash character.

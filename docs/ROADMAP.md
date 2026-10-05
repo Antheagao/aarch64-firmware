@@ -1,6 +1,7 @@
 # Roadmap
 
 This file is the spec for each milestone: scope, the registers involved, and the "done when" test.
+The work queue that tracks progress batch by batch lives in `notes/firmware-current.md`.
 
 Each milestone ends with new lines in the `CHECKS` list in `tests/run_tests.py`.
 That way CI proves on every push that every earlier milestone still works.
