@@ -136,10 +136,13 @@ format-check:
 # all. Target-specific flags (-mstrict-align, -mgeneral-regs-only) are
 # deliberately absent: they are not valid for the host.
 HOST_CC ?= cc
-HOST_CFLAGS := -fsyntax-only -std=gnu11 -Wall -Wextra -Werror -ffreestanding -Iinclude -DTRAP_EL=3
+HOST_CFLAGS := -fsyntax-only -std=gnu11 -Wall -Wextra -Werror -ffreestanding -Iinclude
 
 syntax-check:
-	@for f in $(wildcard src/*.c kernel/*.c); do 		echo "  SYNTAX  $$f"; 		$(HOST_CC) $(HOST_CFLAGS) $$f || exit 1; 	done
+# Both configurations are compiled: src/trap.c and src/vectors.S are built
+# into each image with a different TRAP_EL, so checking only one leaves half
+# the code unchecked. A guarded block going unused is exactly what CI caught.
+	@for el in 3 1; do for f in $(wildcard src/*.c kernel/*.c); do echo "  SYNTAX  TRAP_EL=$$el $$f"; $(HOST_CC) $(HOST_CFLAGS) -DTRAP_EL=$$el $$f || exit 1; done; done
 
 # Host unit tests. Logic that takes values as arguments and returns results
 # can be compiled for the host and tested in milliseconds, with sanitizers

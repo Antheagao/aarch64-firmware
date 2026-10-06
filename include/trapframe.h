@@ -61,10 +61,15 @@ uint64_t trap_last_esr(void);
 #define ESR_IL(esr)  ((uint32_t)(((esr) >> 25) & 0x1))
 #define ESR_ISS(esr) ((uint32_t)((esr) & 0x1ffffff))
 
-#define ESR_EC_BRK         0x3c
-#define ESR_EC_DATA_ABORT  0x25
-#define ESR_DFSC(iss)      ((iss) & 0x3f)
-#define ESR_DFSC_ALIGNMENT 0x21
+#define ESR_EC_BRK 0x3c
+#define ESR_EC_SMC 0x17
+
+/* Vector slot for a synchronous exception from a lower EL in AArch64: the
+ * one an SMC from EL1 arrives through. */
+#define VECTOR_SYNC_LOWER_A64 8
+#define ESR_EC_DATA_ABORT     0x25
+#define ESR_DFSC(iss)         ((iss) & 0x3f)
+#define ESR_DFSC_ALIGNMENT    0x21
 
 #endif /* __ASSEMBLER__ */
 #endif

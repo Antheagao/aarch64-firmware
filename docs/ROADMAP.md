@@ -15,7 +15,7 @@ For a gentler start, read the matching guide in Arm's free *Learn the architectu
 | M0 | [Reset vector, C runtime, UART, CI](#m0-reset-vector-c-runtime-uart-ci) | - | Done |
 | M1 | [EL3 exceptions and crash reporter](#m1-el3-exceptions-and-crash-reporter) | 1 wk | Done |
 | M2 | [CPU feature discovery](#m2-cpu-feature-discovery) | 3 days | Done |
-| M3 | [EL3 to EL1 hand-off](#m3-el3-to-el1-hand-off) | 1 wk | In progress |
+| M3 | [EL3 to EL1 hand-off](#m3-el3-to-el1-hand-off) | 1 wk | Done |
 | M4 | [MMU and caches](#m4-mmu-and-caches) | 1-2 wk | Not started |
 | M5 | [GICv3 and the generic timer](#m5-gicv3-and-the-generic-timer) | 1 wk | Not started |
 | M6 | [PSCI and multi-core bring-up](#m6-psci-and-multi-core-bring-up) | 1-2 wk | Not started |
@@ -92,7 +92,9 @@ This is what boot firmware is for: set up the lower exception levels and hand of
 - [x] Give EL1 its own vector table (`VBAR_EL1`) and crash reporter.
   Most of the M1 code should be reusable.
   It was, by parameterising rather than copying: `src/vectors.S` and `src/trap.c` are built into both images with `TRAP_EL` selecting the banked syndrome registers and the level the report names.
-- [ ] Make an `smc #0` from EL1 land in the EL3 handler.
+- [x] Make an `smc #0` from EL1 land in the EL3 handler.
+  EL3 treats a synchronous exception from a lower EL as a request rather than a fault: it reports it and returns, instead of parking as it does for an unexpected fault.
+  The SMCCC argument convention and a real function table are M6's, with PSCI.
 
 **Done when** the harness sees `kernel: running at EL1` and an EL3 trap report with `EC=0x17` (SMC from AArch64).
 

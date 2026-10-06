@@ -35,6 +35,16 @@ static void selftest_el1_brk(void)
             ESR_EC(esr) == ESR_EC_BRK ? "ok" : "FAIL");
 }
 
+/* Call down to EL3 on purpose. An smc from EL1 is a request, not a fault:
+ * it lands in EL3's lower-EL AArch64 synchronous vector, and EL3 is expected
+ * to return control here rather than park. */
+static void selftest_smc(void)
+{
+    kprintf("kernel: calling smc #0\n");
+    __asm__ volatile("smc #0" ::: "memory");
+    kprintf("kernel: returned from smc: ok\n");
+}
+
 void kernel_main(void)
 {
     /* The firmware already brought the UART up, but this image must not
@@ -54,6 +64,7 @@ void kernel_main(void)
             (read_sysreg(vbar_el1) == (uint64_t)(uintptr_t)vectors) ? "ok" : "FAIL");
 
     selftest_el1_brk();
+    selftest_smc();
 
     semihost_exit(0);
 }
