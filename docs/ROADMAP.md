@@ -102,8 +102,8 @@ The security state is reported by EL3 rather than by the kernel, as `el3: enteri
 EL1 cannot read `SCR_EL3`, so a kernel claiming to be Non-secure would be repeating what it was told rather than observing anything.
 
 **Write-ups:**
-- `docs/el-handoff.md` explains every bit set in `SCR_EL3`, `HCR_EL2` and `SPSR_EL3`, and why.
-- `docs/riscv-vs-arm.md` maps the same ideas onto RISC-V from the xv6-riscv work.
+- [`docs/el-handoff.md`](el-handoff.md) explains every bit set in `SCR_EL3`, `HCR_EL2`, `SCTLR_EL1` and `SPSR_EL3`, and why, with the register banking order that makes the sequence load-bearing.
+- [`docs/riscv-vs-arm.md`](riscv-vs-arm.md) maps the same ideas onto RISC-V from the xv6-riscv work.
   Cover M/S/U modes vs EL3/EL1/EL0, SBI vs PSCI, `scause` vs `ESR_ELx.EC`, `stvec` vs `VBAR_EL1`, `satp` vs `TTBRn_EL1`, PLIC vs GIC, and LR/SC vs LDXR/STXR.
 
 ## M4: MMU and caches

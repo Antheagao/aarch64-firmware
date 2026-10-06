@@ -1,8 +1,8 @@
 # Firmware campaign: current queue
 
 **Last updated:** 2026-10-05.
-Batch 13 made `smc #0` from EL1 land at EL3 and return, on branch `feat/m3-smc`, finishing M3 and tagging `v0.3.0`.
-Next batch: row 1, the `docs/el-handoff.md` and `docs/riscv-vs-arm.md` write-ups.
+Batch 14 wrote `docs/el-handoff.md` and `docs/riscv-vs-arm.md` on branch `docs/el-handoff`.
+Next batch: row 1, a `clang-tidy` and `cppcheck` CI job.
 
 This file is the work queue for the `campaign-loop` skill in `.claude/skills/campaign-loop/SKILL.md`.
 Milestone specs live in `docs/ROADMAP.md`; this file only tracks order and state.
@@ -21,20 +21,27 @@ Parked rows and their unblock conditions are in `notes/firmware-future.md`, and 
 
 | # | Row | Scope | Gate |
 |---|---|---|---|
-| 1 | `docs`: `el-handoff.md` and `riscv-vs-arm.md` | Every bit set in `SCR_EL3`, `HCR_EL2` and `SPSR_EL3` and why; then map the same ideas onto RISC-V from the xv6-riscv work | Both files exist and the roadmap links them |
-| 2 | `ci`: `clang-tidy` and `cppcheck` job | Static analysis over `src/` and `include/`, with the checks that fire on this code either fixed or explicitly disabled with a reason | New CI job passes, and a deliberately introduced defect makes it fail |
-| 3 | [USER-GATED] Turn on "Automatically delete head branches" in the GitHub repo settings | The Claude session cannot delete remote branches, so merged branches stay until the owner deletes them | Merged branches disappear after merge |
+| 1 | `ci`: `clang-tidy` and `cppcheck` job | Static analysis over `src/` and `include/`, with the checks that fire on this code either fixed or explicitly disabled with a reason | New CI job passes, and a deliberately introduced defect makes it fail |
+| 2 | [USER-GATED] Turn on "Automatically delete head branches" in the GitHub repo settings | The Claude session cannot delete remote branches, so merged branches stay until the owner deletes them | Merged branches disappear after merge |
 
 ## Next batch plan (row 1)
 
-- Branch: `docs/el-handoff`.
-- `docs/el-handoff.md`: every bit set in `SCR_EL3`, `HCR_EL2`, `SCTLR_EL1` and `SPSR_EL3` during the hand-off, with the reason and the Arm ARM section title for each. The banking order discovered in batch 11 is the centrepiece: say plainly what goes wrong if `SCR_EL3.NS` is set last, because that is the part a reader cannot derive from the code alone.
-- `docs/riscv-vs-arm.md`: map the same ideas onto RISC-V from the xv6-riscv work. M/S/U against EL3/EL1/EL0, SBI against PSCI, `scause` against `ESR_ELx.EC`, `stvec` against `VBAR_ELx`, `satp` against `TTBRn_EL1`, PLIC against GIC, and LR/SC against LDXR/STXR.
-- Write from the code that exists, not from the roadmap's wish list: `satp` and `TTBRn_EL1` can be compared, but say that the MMU is still off here and that M4 owns it, rather than implying it is done.
-- Link both from `docs/ROADMAP.md` under M3.
-- Gate: both files exist, the roadmap links them, and every register bit either file claims is set can be found in `src/handoff.c`. Documentation that disagrees with the code is worse than none, so check it rather than assuming.
+- Branch: `ci/static-analysis`.
+- Add `clang-tidy` and `cppcheck` over `src/`, `include/` and `kernel/`, as a CI job and a `make lint` target so it can be run before pushing.
+- Expect noise, and budget for it rather than being surprised: freestanding firmware trips checks written for hosted C. MMIO casts through `uintptr_t`, the deliberate inline assembly, and the fixed-size lookup tables will all draw complaints.
+- Each check that fires gets one of two outcomes, and nothing else: the code is fixed, or the check is disabled in the config file with a comment saying why. A blanket suppression list with no reasons is a worse artifact than no linter.
+- Run it at both `TRAP_EL` values, as the syntax gate now does, or half the code goes unchecked.
+- `clang-tidy` needs a compilation database. Decide between generating `compile_commands.json` and passing the flags after `--`; the second is simpler here and avoids adding a build dependency just to lint.
+- Gate: the job passes on a clean tree, and a deliberately introduced defect, such as a genuinely unused variable or a dead store, makes it fail. Verify that rather than assuming it, as with every other gate in this repo.
 
 ## Batch log
+
+### Batch 14 (2026-10-06): the M3 write-ups
+
+- `docs/el-handoff.md` documents every bit written in `src/handoff.c`, with the Arm ARM section titles rather than numbers, since numbers move between issues. It leads with the ordering rather than the values: with `FEAT_SEL2` the EL1 and EL2 registers are banked by security state, so `SCR_EL3.NS` has to be set before them, and getting it wrong produces no diagnostic at all.
+- It also records what is deliberately *not* set, which is the part a reader cannot recover from the code: `SCR_EL3.IRQ/FIQ/EA` left clear because M5 owns routing, `SMD` left clear or the `smc` self-test would take an Undefined Instruction exception, and the whole MMU set left alone until M4.
+- `docs/riscv-vs-arm.md` maps privilege, trap causes, vectoring, the call-upward instructions, translation, interrupts and atomics onto the xv6-riscv work. The useful pairing turned out to be `ecall` against `smc`: `sepc` points at the `ecall` and `ELR` points after the `smc`, so the same resume idiom needs opposite corrections, which is the bug batch 13 hit.
+- Gate: checked mechanically rather than by eye. Every register macro the documents claim is set was confirmed present in `src/handoff.c`, and the two quoted values recomputed: `SCTLR_EL1` is 0x30D0080A and `SPSR_EL3` is 0x3C5. Documentation that disagrees with the code is worse than none.
 
 ### Batch 13 (2026-10-06): SMC from EL1, M3 done
 
