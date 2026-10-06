@@ -11,22 +11,33 @@ SECTIONS
 {
     . = 0x40000000;             /* DRAM_BASE: non-secure RAM on QEMU virt */
 
-    .text : {
+    /* Every section starts on a page boundary, because the MMU's smallest
+     * unit of permission is a page: .text cannot be execute-only if it
+     * shares a page with .data. */
+    .text : ALIGN(4096) {
+        __ktext_start = .;
         KEEP(*(.text.kstart))   /* kernel_start must be the first byte */
         *(.text .text.*)
+        . = ALIGN(4096);
+        __ktext_end = .;
     }
 
-    .rodata : ALIGN(8) {
+    .rodata : ALIGN(4096) {
+        __krodata_start = .;
         *(.rodata .rodata.*)
+        . = ALIGN(4096);
+        __krodata_end = .;
     }
 
-    .data : ALIGN(8) {
+    .data : ALIGN(4096) {
+        __kdata_start = .;
         *(.data .data.*)
+        . = ALIGN(4096);
     }
 
     /* NOLOAD keeps .bss out of the binary, so the image stays small and the
      * firmware copies only what it must. kernel_start zeroes it. */
-    .bss (NOLOAD) : ALIGN(16) {
+    .bss (NOLOAD) : ALIGN(4096) {
         __kbss_start = .;
         *(.bss .bss.*)
         *(COMMON)
@@ -34,9 +45,11 @@ SECTIONS
         __kbss_end = .;
     }
 
-    .stack (NOLOAD) : ALIGN(16) {
+    .stack (NOLOAD) : ALIGN(4096) {
         . += 16K;
         __kstack_top = .;
+        . = ALIGN(4096);
+        __kend = .;             /* one past everything the kernel owns */
     }
 
     /DISCARD/ : {

@@ -49,6 +49,9 @@ CHECKS = [
     ("the EL1 image runs at EL1 after the eret", r"kernel: running at EL1"),
     ("EL1 builds its translation tables", r"kernel: page tables built, \d+ of \d+ tables used"),
     ("EL1 runs with the MMU on", r"kernel: MMU enabled: ok"),
+    ("each EL1 section is mapped with its own permissions",
+     r"kernel: text 0x[0-9a-f]+-0x[0-9a-f]+ RX, rodata 0x[0-9a-f]+-0x[0-9a-f]+ RO, "
+     r"data 0x[0-9a-f]+-0x[0-9a-f]+ RW\+XN"),
     ("EL1 installs its own vector table in VBAR_EL1",
      r"kernel: vector table installed: ok"),
     ("a fault at EL1 is reported by EL1, not escalated to EL3",
