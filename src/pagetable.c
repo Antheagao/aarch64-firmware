@@ -77,11 +77,11 @@ static uint64_t leaf_desc(uint64_t pa, int level, enum pt_type type, enum pt_per
         desc |= DESC_SH_INNER;
     }
 
-    desc |= (perm == PT_RW_XN) ? DESC_AP_RW : DESC_AP_RO;
+    desc |= (perm == PT_RW_XN || perm == PT_RW_X) ? DESC_AP_RW : DESC_AP_RO;
 
     /* Execute-never is two bits, and clearing only one leaves the memory
      * executable from the other privilege level. */
-    if (perm != PT_RO_X)
+    if (perm != PT_RO_X && perm != PT_RW_X)
         desc |= DESC_UXN | DESC_PXN;
 
     return desc;

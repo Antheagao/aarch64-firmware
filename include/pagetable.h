@@ -41,6 +41,11 @@ enum pt_perm {
     PT_RW_XN, /* data, stack: writable, never executable */
     PT_RO_XN, /* rodata: read-only, never executable */
     PT_RO_X,  /* text: read-only, executable */
+    /* Writable and executable at once, which is exactly what a per-section
+     * map exists to prevent. It is here only for the step that turns the MMU
+     * on with a single block covering a whole image, before the sections are
+     * split apart. Nothing should still be using it after that. */
+    PT_RW_X,
 };
 
 struct pt_region {
