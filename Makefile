@@ -9,6 +9,7 @@
 #   make format-check  fail if any C source or header is misformatted
 #   make syntax-check  compile-check the C sources with the host compiler
 #   make unit       run the host unit tests under ASan and UBSan
+#   make lint       run clang-tidy over the C sources
 #   make LLVM=1     build with clang + lld instead of GCC + binutils
 #   make CPU=cortex-a57 run   try a different core (default: max, i.e. Armv9 features)
 
@@ -61,7 +62,7 @@ MACHINE   := virt,secure=on,virtualization=on,gic-version=3
 QEMUFLAGS := -M $(MACHINE) -cpu $(CPU) -smp $(SMP) -m 512M -nographic \
              -bios $(BIN) -semihosting-config enable=on,target=native
 
-.PHONY: all run debug gdb test format format-check syntax-check unit kernel qemu-cmd disasm clean
+.PHONY: all run debug gdb test format format-check syntax-check unit lint kernel qemu-cmd disasm clean
 
 all: $(BIN)
 
@@ -143,6 +144,17 @@ syntax-check:
 # into each image with a different TRAP_EL, so checking only one leaves half
 # the code unchecked. A guarded block going unused is exactly what CI caught.
 	@for el in 3 1; do for f in $(wildcard src/*.c kernel/*.c); do echo "  SYNTAX  TRAP_EL=$$el $$f"; $(HOST_CC) $(HOST_CFLAGS) -DTRAP_EL=$$el $$f || exit 1; done; done
+
+# Static analysis. Analysed for the target it is built for, not the host:
+# src/semihost.c names AArch64 registers in inline asm, which a host target
+# rejects outright. Both TRAP_EL values are linted, for the same reason the
+# syntax check does it: src/trap.c is built into each image.
+# .clang-tidy carries the check list and a reason for every exclusion.
+CLANG_TIDY ?= clang-tidy
+TIDY_FLAGS := --target=aarch64-none-elf -std=gnu11 -ffreestanding -Iinclude
+
+lint:
+	@for el in 3 1; do for f in $(wildcard src/*.c kernel/*.c); do echo "  TIDY    TRAP_EL=$$el $$f"; $(CLANG_TIDY) --quiet $$f -- $(TIDY_FLAGS) -DTRAP_EL=$$el || exit 1; done; done
 
 # Host unit tests. Logic that takes values as arguments and returns results
 # can be compiled for the host and tested in milliseconds, with sanitizers

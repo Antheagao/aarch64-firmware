@@ -23,7 +23,10 @@ Sections marked **(planned)** describe test layers that do not exist yet.
   `-fsyntax-only` stops before assembly, which is what lets a host compiler accept the AArch64 inline asm in `include/sysreg.h`.
   It checks syntax and semantics only: it proves nothing about what the firmware does, so it adds to the QEMU checks rather than replacing any of them.
 - `make format-check` enforces `.clang-format`, pinned to clang-format 18.
-- **(planned)** Static analysis with `clang-tidy` and `cppcheck` as a CI job.
+- `make lint` runs `clang-tidy` over `src/` and `kernel/` at both `TRAP_EL` values, with `WarningsAsErrors` on, and CI runs it pinned to `clang-tidy-18`.
+  It analyses for the *target*, not the host: `src/semihost.c` names AArch64 registers in inline assembly, which a host target rejects outright.
+  `.clang-tidy` carries the check list, and every exclusion carries its reason. A suppression list without reasons is a worse artifact than no linter, because nobody can tell later which entries were judgement and which were shrugging.
+- **(planned)** `cppcheck` as a second static-analysis job.
 
 ### 2. Host unit tests
 

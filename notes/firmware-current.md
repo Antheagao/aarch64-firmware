@@ -1,8 +1,8 @@
 # Firmware campaign: current queue
 
 **Last updated:** 2026-10-05.
-Batch 14 wrote `docs/el-handoff.md` and `docs/riscv-vs-arm.md` on branch `docs/el-handoff`.
-Next batch: row 1, a `clang-tidy` and `cppcheck` CI job.
+Batch 15 added `clang-tidy` as `make lint` and a CI job, on branch `ci/clang-tidy`.
+The queue now holds only a user-gated row, so the next session should run the close-out in `.claude/skills/campaign-loop/SKILL.md` or pull M4 forward from `notes/firmware-future.md`, which `v0.3.0` unblocked.
 
 This file is the work queue for the `campaign-loop` skill in `.claude/skills/campaign-loop/SKILL.md`.
 Milestone specs live in `docs/ROADMAP.md`; this file only tracks order and state.
@@ -21,20 +21,25 @@ Parked rows and their unblock conditions are in `notes/firmware-future.md`, and 
 
 | # | Row | Scope | Gate |
 |---|---|---|---|
-| 1 | `ci`: `clang-tidy` and `cppcheck` job | Static analysis over `src/` and `include/`, with the checks that fire on this code either fixed or explicitly disabled with a reason | New CI job passes, and a deliberately introduced defect makes it fail |
-| 2 | [USER-GATED] Turn on "Automatically delete head branches" in the GitHub repo settings | The Claude session cannot delete remote branches, so merged branches stay until the owner deletes them | Merged branches disappear after merge |
+| 1 | [USER-GATED] Turn on "Automatically delete head branches" in the GitHub repo settings | The Claude session cannot delete remote branches, so merged branches stay until the owner deletes them | Merged branches disappear after merge |
 
-## Next batch plan (row 1)
+## Next batch plan
 
-- Branch: `ci/static-analysis`.
-- Add `clang-tidy` and `cppcheck` over `src/`, `include/` and `kernel/`, as a CI job and a `make lint` target so it can be run before pushing.
-- Expect noise, and budget for it rather than being surprised: freestanding firmware trips checks written for hosted C. MMIO casts through `uintptr_t`, the deliberate inline assembly, and the fixed-size lookup tables will all draw complaints.
-- Each check that fires gets one of two outcomes, and nothing else: the code is fixed, or the check is disabled in the config file with a comment saying why. A blanket suppression list with no reasons is a worse artifact than no linter.
-- Run it at both `TRAP_EL` values, as the syntax gate now does, or half the code goes unchecked.
-- `clang-tidy` needs a compilation database. Decide between generating `compile_commands.json` and passing the flags after `--`; the second is simpler here and avoids adding a build dependency just to lint.
-- Gate: the job passes on a clean tree, and a deliberately introduced defect, such as a genuinely unused variable or a dead store, makes it fail. Verify that rather than assuming it, as with every other gate in this repo.
+Only a user-gated row is left, which is a stop condition for the loop.
+M4, the MMU and caches, is unblocked now that M3 is merged and tagged `v0.3.0`: move it out of `notes/firmware-future.md` and split it into PR-sized rows.
+A `cppcheck` row is parked there too, split out of this batch because it cannot be run on this machine.
 
 ## Batch log
+
+### Batch 15 (2026-10-06): clang-tidy
+
+- `make lint` runs `clang-tidy` over `src/` and `kernel/` at both `TRAP_EL` values with `WarningsAsErrors` on, and a CI job runs it pinned to `clang-tidy-18` for the same reason `clang-format` is pinned to 18.
+- It analyses for the target rather than the host. Without `--target=aarch64-none-elf` the run produced four errors, all `unknown register name 'x0' in asm` from `src/semihost.c`: a host target simply does not have those registers. Linting freestanding code against the wrong target measures the wrong thing.
+- `.clang-tidy` enables `bugprone`, `clang-analyzer`, `misc`, `performance`, `portability` and `readability` wholesale, and every exclusion carries its reason in the file. The bulk of the noise was `readability-braces-around-statements`, `readability-magic-numbers` and `readability-identifier-length`, none of which fit register-level firmware written to this project's own style.
+- One finding was real and was fixed rather than suppressed: `bugprone-casting-through-void` on the loader's `(const uint64_t *)(const void *)` cast. The symbols are declared `uint64_t[]` now, which states the alignment the assembler already guarantees instead of laundering it past the compiler, and it let the "size is a multiple of 8" check become a structural property rather than a runtime one.
+- `cppcheck` was split out into a parked row. It cannot be installed on this machine, so it could only be iterated through CI, and pairing it with work that is fully checkable locally would have meant blind pushes.
+- Gate, verified rather than assumed: a clean tree exits 0, and a redundant expression makes `make lint` exit 2 with `misc-redundant-expression`.
+- Learning, twice over now: the first negative test reported a false pass because the script that was supposed to insert the defect never matched, and nothing checked that it had. Every negative test in this repo must first prove it changed something. The second attempt asserted the anchor and caught a real propagation question immediately.
 
 ### Batch 14 (2026-10-06): the M3 write-ups
 

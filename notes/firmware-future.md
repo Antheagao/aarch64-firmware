@@ -14,4 +14,5 @@ A parked row without an unblock condition is a row nobody ever picks up again.
 | M8 (QEMU part): PMU instruction counts with `-icount shift=0` | M7 is merged and tagged `v0.7.0` |
 | [USER-GATED] M8 (hardware part): `perf stat` runs on AWS Graviton4 | M8 QEMU part is merged and the owner approves the AWS cost |
 | S1: boot Linux on this firmware | M6 is merged; it can run in parallel with M7 and M8 |
+| CI: a `cppcheck` static-analysis job | Someone can run `cppcheck` locally, or the owner accepts that it can only be iterated through CI |
 | CI: build a newer QEMU and cache it | A milestone needs an emulated feature that QEMU 8.2 lacks |
