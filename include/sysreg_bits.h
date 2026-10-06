@@ -69,6 +69,23 @@
 #define SPSR_EL3_A      (UL(1) << 8) /* SError masked */
 #define SPSR_EL3_D      (UL(1) << 9) /* debug exceptions masked */
 
+/* MAIR_EL1 attribute bytes. The descriptors carry an index into this
+ * register, so these two must agree with PT_MAIR_* in include/pagetable.h.
+ * Arm ARM (DDI 0487), "MAIR_EL1, Memory Attribute Indirection Register". */
+#define MAIR_ATTR_NORMAL_WB 0xffUL /* Normal, inner and outer write-back RW-allocate */
+#define MAIR_ATTR_DEVICE    0x00UL /* Device-nGnRnE */
+#define MAIR_EL1_VALUE      ((MAIR_ATTR_DEVICE << 8) | MAIR_ATTR_NORMAL_WB)
+
+/* TCR_EL1, Translation Control Register (EL1). */
+#define TCR_EL1_T0SZ(n)   ((uint64_t)(n) << 0)
+#define TCR_EL1_IRGN0_WB  (UL(1) << 8) /* walker reads TTBR0 tables write-back cacheable */
+#define TCR_EL1_ORGN0_WB  (UL(1) << 10)
+#define TCR_EL1_SH0_INNER (UL(3) << 12)
+#define TCR_EL1_TG0_4K    (UL(0) << 14)
+#define TCR_EL1_TG1_4K    (UL(2) << 30) /* TG1 encodes 4 KiB as 0b10, unlike TG0 */
+#define TCR_EL1_EPD1      (UL(1) << 23) /* no TTBR1 walks: the map is low and identity */
+#define TCR_EL1_IPS(n)    ((uint64_t)(n) << 32)
+
 /* VBAR_EL3 holds the vector base address; bits [10:0] are RES0, so the table
  * must be aligned to 2 KiB. Arm ARM (DDI 0487), "Exception vectors". */
 #define VBAR_ALIGN      0x800

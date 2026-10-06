@@ -47,6 +47,8 @@ CHECKS = [
     ("EL3 reports the security state it configured, which only EL3 can know",
      r"el3: entering EL1 \(Non-secure\) at 0x0000000040000000"),
     ("the EL1 image runs at EL1 after the eret", r"kernel: running at EL1"),
+    ("EL1 builds its translation tables", r"kernel: page tables built, \d+ of \d+ tables used"),
+    ("EL1 runs with the MMU on", r"kernel: MMU enabled: ok"),
     ("EL1 installs its own vector table in VBAR_EL1",
      r"kernel: vector table installed: ok"),
     ("a fault at EL1 is reported by EL1, not escalated to EL3",

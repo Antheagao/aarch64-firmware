@@ -45,7 +45,7 @@ ASFLAGS := -g -Iinclude -MMD -MP
 LDFLAGS := -nostdlib -static -T linker.ld
 
 SRCS := $(wildcard src/*.c src/*.S)
-KERNEL_SRCS := kernel/start.S kernel/main.c src/uart.c src/kprintf.c src/semihost.c src/vectors.S src/trap.c
+KERNEL_SRCS := kernel/start.S kernel/main.c kernel/mmu.c src/uart.c src/kprintf.c src/semihost.c src/pagetable.c src/cpuid.c src/vectors.S src/trap.c
 
 # src/vectors.S and src/trap.c are built into both images. TRAP_EL picks the
 # banked syndrome registers and the level the crash report names, so one

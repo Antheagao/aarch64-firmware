@@ -11,6 +11,7 @@
 #include <stdint.h>
 
 #include "kprintf.h"
+#include "mmu.h"
 #include "semihost.h"
 #include "sysreg.h"
 #include "sysreg_bits.h"
@@ -62,6 +63,12 @@ void kernel_main(void)
     isb();
     kprintf("kernel: vector table installed: %s\n",
             (read_sysreg(vbar_el1) == (uint64_t)(uintptr_t)vectors) ? "ok" : "FAIL");
+
+    /* The MMU goes on before the self-tests, so everything after this point
+     * is running translated: the faults they raise are proof the exception
+     * path survives translation, not just that it worked beforehand. */
+    if (!mmu_enable())
+        semihost_exit(1);
 
     selftest_el1_brk();
     selftest_smc();
