@@ -8,6 +8,7 @@
 #   make format     reformat C sources and headers with clang-format
 #   make format-check  fail if any C source or header is misformatted
 #   make syntax-check  compile-check the C sources with the host compiler
+#   make unit       run the host unit tests under ASan and UBSan
 #   make LLVM=1     build with clang + lld instead of GCC + binutils
 #   make CPU=cortex-a57 run   try a different core (default: max, i.e. Armv9 features)
 
@@ -53,7 +54,7 @@ MACHINE   := virt,secure=on,virtualization=on,gic-version=3
 QEMUFLAGS := -M $(MACHINE) -cpu $(CPU) -smp $(SMP) -m 512M -nographic \
              -bios $(BIN) -semihosting-config enable=on,target=native
 
-.PHONY: all run debug gdb test format format-check syntax-check qemu-cmd disasm clean
+.PHONY: all run debug gdb test format format-check syntax-check unit qemu-cmd disasm clean
 
 all: $(BIN)
 
@@ -106,6 +107,22 @@ HOST_CFLAGS := -fsyntax-only -std=gnu11 -Wall -Wextra -Werror -ffreestanding -Ii
 
 syntax-check:
 	@for f in $(wildcard src/*.c); do 		echo "  SYNTAX  $$f"; 		$(HOST_CC) $(HOST_CFLAGS) $$f || exit 1; 	done
+
+# Host unit tests. Logic that takes values as arguments and returns results
+# can be compiled for the host and tested in milliseconds, with sanitizers
+# that QEMU cannot give us. The firmware sources are compiled unchanged; the
+# only substitution is tests/unit/fake_uart.c in place of the PL011 driver,
+# so the code under test is the code that ships.
+UNIT_BIN    := $(BUILD)/unit
+UNIT_SRCS   := src/kprintf.c tests/unit/fake_uart.c tests/unit/test_kprintf.c
+UNIT_CFLAGS := -std=gnu11 -g -O1 -Wall -Wextra -Werror -Iinclude -Itests/unit                -fsanitize=address,undefined -fno-sanitize-recover=all
+
+unit: $(UNIT_BIN)
+	$(UNIT_BIN)
+
+$(UNIT_BIN): $(UNIT_SRCS)
+	@mkdir -p $(BUILD)
+	$(HOST_CC) $(UNIT_CFLAGS) $^ -o $@
 
 # Used by the test harness so it can run (and kill) QEMU directly.
 qemu-cmd:

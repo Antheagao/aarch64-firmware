@@ -1,8 +1,8 @@
 # Firmware campaign: current queue
 
 **Last updated:** 2026-10-05.
-Batch 6 added the alignment fault self-test on branch `test/m1-alignment-fault`, finishing M1 and tagging `v0.1.0`.
-Next batch: row 1, host unit test scaffolding under `tests/unit/` with ASan and UBSan, first covering `kprintf` formatting.
+Batch 7 added host unit tests under `tests/unit/` with ASan and UBSan on branch `test/host-unit-tests`.
+Next batch: row 1, the table-driven ID register decoder (M2), which also gets host unit tests now that the harness exists.
 
 This file is the work queue for the `campaign-loop` skill in `.claude/skills/campaign-loop/SKILL.md`.
 Milestone specs live in `docs/ROADMAP.md`; this file only tracks order and state.
@@ -21,23 +21,29 @@ Parked rows and their unblock conditions are in `notes/firmware-future.md`, and 
 
 | # | Row | Scope | Gate |
 |---|---|---|---|
-| 1 | `test`: host unit test scaffolding | `tests/unit/` runner, `make unit`, built with ASan and UBSan; first tests cover `kprintf` formatting | `make unit` passes locally and in a new CI job |
-| 2 | `feat(cpu)`: table-driven ID register decoder (M2) | Decode the ID registers listed in the roadmap into a printed feature table | Checks: SVE2, PAC, BTI, MTE present on `max` and absent on `cortex-a57`; tag `v0.2.0` |
-| 3 | [USER-GATED] Turn on "Automatically delete head branches" in the GitHub repo settings | The Claude session cannot delete remote branches, so merged branches stay until the owner deletes them | Merged branches disappear after merge |
+| 1 | `feat(cpu)`: table-driven ID register decoder (M2) | Decode the ID registers listed in the roadmap into a printed feature table | Checks: SVE2, PAC, BTI, MTE present on `max` and absent on `cortex-a57`; tag `v0.2.0` |
+| 2 | [USER-GATED] Turn on "Automatically delete head branches" in the GitHub repo settings | The Claude session cannot delete remote branches, so merged branches stay until the owner deletes them | Merged branches disappear after merge |
 
 ## Next batch plan (row 1)
 
-- Branch: `test/host-unit-tests`.
-- `tests/unit/` with a small runner and `make unit`, built for the host with `-fsanitize=address,undefined`.
-  The host compile gate from batch 4 already proves this code compiles off-target, so the step here is running it, not porting it.
-- First subject is `kprintf` formatting, which batch 5 showed is worth pinning down: it silently has no `-` flag, so `%-2u` prints as text.
-  Cover width, zero padding, `%d` with negatives, `%x`, `%p`, `%s` with NULL, `%%`, and an unknown conversion.
-- `kprintf` writes through `uart_putc`, so the runner needs a seam: build the unit test with a `uart_putc` that appends to a buffer instead of touching MMIO.
-  That keeps `kprintf.c` unchanged and compiled as-is, which is the point of testing it.
-- Decide and record whether the runner is C or driven from Python; C keeps the toolchain to one compiler and matches what a firmware team would expect.
-- Gate: `make unit` passes in a new CI job, and a deliberately wrong expectation makes it fail, proving the runner reports failure rather than always printing success.
+- Branch: `feat/m2-id-registers`.
+- Add `src/cpuid.c` with the table-driven decoder `docs/CODING_STANDARDS.md` calls for: a table of `{register, shift, width, signed, name}` rows walked by one function, so adding a feature is a row rather than another `if`.
+- Decode `ID_AA64PFR0_EL1`, `ID_AA64PFR1_EL1`, `ID_AA64ISAR0/1/2_EL1`, `ID_AA64MMFR0/1/2_EL1`, `ID_AA64DFR0_EL1`, and `ID_AA64ZFR0_EL1` only when SVE is present.
+- Read the ID field rules from the Arm ARM rather than guessing: most fields are unsigned, some are signed, and `0b1111` means "not present" for the signed ones.
+  Getting that wrong silently reports features backwards, so it is the part to check against the manual line by line.
+- Print a feature table covering EL2/EL3, AdvSIMD, SVE/SVE2, SME, MTE level, PAC (APA/API), BTI, RME, SPE, AMU, PMU version, PA range, and the supported granules.
+- Unit-test the field extraction on the host with the harness added in batch 7: feed known register values and assert the decoded names, including the signed-field and "not present" cases. That is cheap now and catches exactly the errors the manual warns about.
+- Gate: checks that SVE2, PAC, BTI and MTE are reported present on `CPU=max` and absent on `CPU=cortex-a57`, plus `make unit`; then tag `v0.2.0`.
 
 ## Batch log
+
+### Batch 7 (2026-10-06): host unit tests
+
+- `make unit` builds `tests/unit/` for the host with `-fsanitize=address,undefined -fno-sanitize-recover=all` and runs it, with a CI job alongside. Sanitizers are the reason to run on the host at all: QEMU gives us neither.
+- `tests/unit/fake_uart.c` is the seam. It captures what `kprintf` writes instead of touching MMIO, so `src/kprintf.c` is compiled unchanged and the code under test is the code that ships.
+- 18 checks over `kprintf`: every conversion, width and zero padding, `%d` at INT_MIN, `%s` with NULL, and the known limitations pinned deliberately, including that there is no `-` flag, which is the wart batch 5 tripped over.
+- Gate: verified the runner fails rather than only passing. Flipping one expected string to `DEADBEEF` made `make unit` exit 2 and print `FAIL  %x prints lowercase hex` with `18 checks, 1 failures`; restoring it returned exit 0.
+- Learning: `include/kprintf.h` carries `__attribute__((format(printf, 1, 2)))`, so GCC format-checks every call. That is valuable in the firmware and awkward in tests that pass malformed formats on purpose, so those formats go through a variable, which the checker cannot see, and the NULL argument is `volatile` so it cannot be folded away. One case also needed a dummy argument for `-Wformat-security`.
 
 ### Batch 6 (2026-10-06): alignment fault self-test, M1 done
 

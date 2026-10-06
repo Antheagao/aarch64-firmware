@@ -25,18 +25,24 @@ Sections marked **(planned)** describe test layers that do not exist yet.
 - `make format-check` enforces `.clang-format`, pinned to clang-format 18.
 - **(planned)** Static analysis with `clang-tidy` and `cppcheck` as a CI job.
 
-### 2. Host unit tests (planned)
+### 2. Host unit tests
 
-Pure logic that does not touch hardware can be compiled for the host and tested quickly with sanitizers.
-Good candidates:
+`make unit` builds `tests/unit/` for the host with `-fsanitize=address,undefined` and runs it; CI runs it too.
+Sanitizers are the reason these run on the host: QEMU gives us neither, and the logic under test is the same code the firmware ships.
 
-- `kprintf` formatting
+The firmware sources are compiled unchanged.
+The only substitution is `tests/unit/fake_uart.c`, which captures what `kprintf` writes instead of touching MMIO.
+That seam is what makes the real `src/kprintf.c` testable off-target, and it is the pattern to follow: keep logic in functions that take values as arguments and return results, so the same code runs on the host and on the target.
+
+Covered now:
+
+- `kprintf` formatting, including its known limitations, which are pinned by tests so that changing one is deliberate.
+
+Good candidates next:
+
 - ESR and ID register decoders (M1, M2)
 - The page table builder (M4)
 - PSCI argument validation (M6)
-
-Plan: `tests/unit/` with a small test runner, built with `-fsanitize=address,undefined`, run by `make unit` and in CI.
-Keep the logic in functions that take values as arguments, so the same code runs on the host and on the target.
 
 ### 3. QEMU integration tests
 
