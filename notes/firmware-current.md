@@ -1,8 +1,8 @@
 # Firmware campaign: current queue
 
 **Last updated:** 2026-10-05.
-Batch 17 added the translation table builder on branch `feat/m4-page-tables`, with 33 host unit tests and nothing yet programmed into the MMU.
-Next batch: row 1, program `MAIR_EL1`, `TCR_EL1` and `TTBR0_EL1` and turn the MMU on at EL1.
+Batch 20 proved the EL1 permissions are enforced, on branch `test/m4-fault-selftests`, finishing M4 and tagging `v0.4.0`.
+Next batch: row 1, drop `-mstrict-align` from the EL1 image now that it runs on Normal memory.
 
 This file is the work queue for the `campaign-loop` skill in `.claude/skills/campaign-loop/SKILL.md`.
 Milestone specs live in `docs/ROADMAP.md`; this file only tracks order and state.
@@ -21,25 +21,41 @@ Parked rows and their unblock conditions are in `notes/firmware-future.md`, and 
 
 | # | Row | Scope | Gate |
 |---|---|---|---|
-| 1 | `feat(mmu)`: turn the MMU on at EL1 | Program `MAIR_EL1` (attr0 Normal write-back `0xff`, attr1 Device-nGnRnE `0x00`), `TCR_EL1` (T0SZ, IRGN/ORGN, SH, TG0, IPS) and `TTBR0_EL1`, then set `SCTLR_EL1.M/C/I` with the `dsb`/`isb`/`tlbi` sequence the Arm ARM requires | Check EL1 still reaches its exit with the MMU on; the barriers are the risk, so a hang here is the expected failure mode |
-| 2 | `feat(mmu)`: per-section permissions | `.text` RX, `.rodata` R, `.data`/`.bss`/stack RW and XN, UART and GIC as Device. Align the EL1 linker sections to page boundaries so the permissions can differ | Check the printed map matches the linker symbols |
-| 3 | `test(mmu)`: permission and execute-never self-tests | Write to `.rodata` and jump into `.data`, recovering from each | Check `EC=0x25 DFSC=0x0f` (permission fault, level 3) and `EC=0x21` (instruction abort); M4 marked done; tag `v0.4.0` |
-| 4 | `build`: drop `-mstrict-align` for the EL1 image | Only once EL1 runs on Normal memory, and only for that image: the firmware keeps it while the MMU is off at EL3 | The matrix still passes with the flag removed from the EL1 build alone |
-| 5 | [USER-GATED] Turn on "Automatically delete head branches" in the GitHub repo settings | The Claude session cannot delete remote branches, so merged branches stay until the owner deletes them | Merged branches disappear after merge |
+| 1 | `build`: drop `-mstrict-align` for the EL1 image | Only once EL1 runs on Normal memory, and only for that image: the firmware keeps it while the MMU is off at EL3 | The matrix still passes with the flag removed from the EL1 build alone |
+| 2 | [USER-GATED] Turn on "Automatically delete head branches" in the GitHub repo settings | The Claude session cannot delete remote branches, so merged branches stay until the owner deletes them | Merged branches disappear after merge |
 
 ## Next batch plan (row 1)
 
-- Branch: `feat/m4-mmu-on`.
-- The builder exists and is tested, so this row is the register programming and the barriers, which is where a mistake becomes a hang rather than a message.
-- `MAIR_EL1`: attr0 = `0xff` (Normal, inner and outer write-back non-transient), attr1 = `0x00` (Device-nGnRnE). The descriptors already carry those indices, so the two files have to agree and `include/pagetable.h` is where the agreement is written down.
-- `TCR_EL1`: `T0SZ` = 25 for a 39-bit VA, `TG0` = 4 KiB, `IRGN0`/`ORGN0` write-back write-allocate, `SH0` inner shareable, `IPS` from `ID_AA64MMFR0_EL1.PARange`, which the M2 decoder already reads. Do not hardcode `IPS`: it is the one field that depends on the CPU.
-- `TTBR0_EL1` gets `pt_root()`. `TTBR1_EL1` stays unused, since the map is identity and low.
-- The sequence matters as much as the values: `dsb ish` after the table writes so they are visible to the table walker, `tlbi vmalle1`, `dsb ish`, then `isb`, then set `SCTLR_EL1.M`, then `isb` again. A missing barrier here usually works in QEMU and fails on hardware, so write the barrier comments for the hardware case.
-- Keep the map minimal and correct rather than complete: the EL1 image, its stack, and the UART. The firmware's own flash and SRAM do not need mapping, because the MMU is only being turned on at EL1.
-- Enable `SCTLR_EL1.C` and `.I` in the same step. Caches off with the MMU on is a configuration nobody wants and that hides bugs in the attributes.
-- Gate: EL1 still prints and still exits 0 with the MMU on, plus a check of the enabled `SCTLR_EL1` read back. A hang is the expected failure mode, and the harness's 30 second timeout is what will catch it.
+- Branch: `build/el1-strict-align`.
+- Remove `-mstrict-align` from the EL1 image's flags only. The firmware keeps it: the MMU is still off at EL3, so all of its memory is Device, where unaligned access faults regardless of what the compiler assumes.
+- That asymmetry is the content of the row, so make it visible in the Makefile rather than leaving a bare flag difference: the two images genuinely run under different memory attributes, and anyone reading it later should see why.
+- Expect the generated code to change: without the flag the compiler may merge adjacent loads and stores into unaligned accesses, which is the point, and `SCTLR_EL1.A` must therefore be reconsidered. Alignment checking on with unaligned accesses allowed is a contradiction, so decide deliberately whether to keep `A` set and leave this flag alone instead.
+- If `SCTLR_EL1.A` stays set, the honest outcome of this row may be "do not do it, and record why". That is a legitimate result and better than a change that passes CI because nothing happens to generate an unaligned access yet.
+- Gate: the full matrix, and either the flag is gone with `SCTLR_EL1.A` handled, or the row is closed with the reasoning written down.
 
 ## Batch log
+
+### Batch 20 (2026-10-06): permission and execute-never faults, M4 done
+
+- Two self-tests prove the map is enforced rather than merely written: a write to `.rodata` gives `EC=0x25` with `DFSC=0x0f`, a permission fault at level 3, and a call into `.data` gives `EC=0x21`, an instruction abort.
+- Recovering from the instruction abort needed a rule the earlier self-tests did not. `ELR` points at the address that could not be fetched, so advancing it by 4 stays inside non-executable memory and the fault repeats forever. The faulting fetch was a call, so the handler returns to `x30`, which makes a failed call behave like one that returned.
+- That is now the third distinct resume rule in one handler, after `+4` for a `brk` and no adjustment at all for an `smc`. Each is written next to its branch, because the right correction depends entirely on what the exception was.
+- The `.data` buffer holds a real `nop; ret`, which would execute perfectly well if the page allowed it. The fault is the mapping's doing and not the data's, which is worth being able to say.
+- M4 is complete: tables built and tested on the host, the MMU on with the right barriers, per-section permissions, and both faults caught and reported rather than hanging.
+
+### Batch 19 (2026-10-06): per-section permissions
+
+- One region per section replaced the single writable-and-executable block: `.text` RX, `.rodata` RO, `.data` through the stack RW and XN, the UART Device. `PT_RW_X` now has no users.
+- `kernel/kernel.ld` aligns every section to 4 KiB, because a page is the MMU's smallest unit of permission.
+- Nothing outside the image and the UART is mapped at all now, where before a whole 1 GiB block was.
+- `clang-tidy` objected to the linker symbols using the reserved double-underscore namespace, which is correct C. The names stayed, since that is the universal convention for linker-defined symbols, and the suppression is scoped to those three declarations rather than disabling the check.
+
+### Batch 18 (2026-10-06): the MMU on at EL1
+
+- `MAIR_EL1`, `TCR_EL1` and `TTBR0_EL1` programmed, then `SCTLR_EL1.M/C/I` set behind the required barriers. `IPS` is read from `ID_AA64MMFR0_EL1.PARange` rather than guessed, since it is the one field that depends on the implementation.
+- `TG1` is given the 4 KiB encoding even though `EPD1` disables TTBR1 walks, because `0b00` is reserved there and `TG1` does not encode sizes the way `TG0` does.
+- The hardware caveat is recorded in a comment rather than left to be found later: real silicon also wants cache maintenance over tables written with caches off, which QEMU does not model.
+- It came up first try on both cores and both toolchains, which is the outcome the pure, host-tested builder was for.
 
 ### Batch 17 (2026-10-06): translation table builder
 

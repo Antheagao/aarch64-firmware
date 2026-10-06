@@ -16,7 +16,7 @@ For a gentler start, read the matching guide in Arm's free *Learn the architectu
 | M1 | [EL3 exceptions and crash reporter](#m1-el3-exceptions-and-crash-reporter) | 1 wk | Done |
 | M2 | [CPU feature discovery](#m2-cpu-feature-discovery) | 3 days | Done |
 | M3 | [EL3 to EL1 hand-off](#m3-el3-to-el1-hand-off) | 1 wk | Done |
-| M4 | [MMU and caches](#m4-mmu-and-caches) | 1-2 wk | Not started |
+| M4 | [MMU and caches](#m4-mmu-and-caches) | 1-2 wk | Done |
 | M5 | [GICv3 and the generic timer](#m5-gicv3-and-the-generic-timer) | 1 wk | Not started |
 | M6 | [PSCI and multi-core bring-up](#m6-psci-and-multi-core-bring-up) | 1-2 wk | Not started |
 | M7 | [Armv9 feature enablement: SVE2, PAC/BTI, MTE](#m7-armv9-feature-enablement-sve2-pacbti-mte) | 2 wk | Not started |
@@ -118,6 +118,12 @@ EL1 cannot read `SCR_EL3`, so a kernel claiming to be Non-secure would be repeat
 
 **Done when** writing to `.rodata` produces `EC=0x25 DFSC=0x0f` (permission fault, level 3) and jumping into `.data` produces `EC=0x21` (instruction abort).
 Both must be caught and reported, not hang.
+
+Done.
+Recovering from the instruction abort needed a rule the other self-tests do not: `ELR` points at the address that could not be fetched, so advancing it by 4 stays inside non-executable memory and the fault repeats.
+The faulting fetch was a call, so the handler returns to `x30` instead, which makes a failed call behave like one that returned.
+
+Dropping `-mstrict-align` for the EL1 image is tracked as its own queue row, since it only becomes safe now that EL1 runs on Normal memory.
 
 ## M5: GICv3 and the generic timer
 

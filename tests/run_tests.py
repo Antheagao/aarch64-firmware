@@ -59,6 +59,10 @@ CHECKS = [
     ("an smc from EL1 is taken at EL3 through the lower-EL vector",
      r"trap: EL3 vector=8 \(sync_lower_a64\) EC=0x17"),
     ("EL3 returns control to EL1 after the smc", r"kernel: returned from smc: ok"),
+    ("writing to rodata is refused by the MMU",
+     r"kernel: rodata write trapped: EC=0x25 DFSC=0x0f: ok"),
+    ("executing from data is refused by the MMU",
+     r"kernel: execute from data trapped: EC=0x21: ok"),
     ("EL1 recovers from its own fault and keeps running",
      r"kernel: brk #0 trapped at EL1: EC=0x3c: ok"),
 ]
