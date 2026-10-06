@@ -14,7 +14,7 @@ For a gentler start, read the matching guide in Arm's free *Learn the architectu
 |---|---|---|---|
 | M0 | [Reset vector, C runtime, UART, CI](#m0-reset-vector-c-runtime-uart-ci) | - | Done |
 | M1 | [EL3 exceptions and crash reporter](#m1-el3-exceptions-and-crash-reporter) | 1 wk | Done |
-| M2 | [CPU feature discovery](#m2-cpu-feature-discovery) | 3 days | Not started |
+| M2 | [CPU feature discovery](#m2-cpu-feature-discovery) | 3 days | Done |
 | M3 | [EL3 to EL1 hand-off](#m3-el3-to-el1-hand-off) | 1 wk | Not started |
 | M4 | [MMU and caches](#m4-mmu-and-caches) | 1-2 wk | Not started |
 | M5 | [GICv3 and the generic timer](#m5-gicv3-and-the-generic-timer) | 1 wk | Not started |
@@ -67,6 +67,11 @@ That is what the ID registers are for.
 **Done when** `CPU=max` reports SVE2, PAC, BTI and MTE, and `CPU=cortex-a57` reports them absent.
 CI already boots both CPUs, so check both.
 Also note what QEMU reports for MTE with and without `mte=on` on the machine.
+
+Done.
+`src/cpuid.c` decodes the ID registers through one table, and `tests/unit/test_cpuid.c` checks the field rules against known values on the host.
+`tests/run_tests.py` now applies per-CPU expectations, so the same firmware is asserted to report SVE2, BTI and PAC present on `-cpu max` and absent on `-cpu cortex-a57`.
+MTE is asserted absent on `cortex-a57` only: the machine line does not set `mte=on`, so asserting it present on `max` would be asserting a QEMU default rather than a decode. Turning `mte=on` on and checking it belongs to M7, which is where MTE is enabled.
 
 ## M3: EL3 to EL1 hand-off
 

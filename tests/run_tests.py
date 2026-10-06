@@ -44,6 +44,31 @@ CHECKS = [
 ]
 
 
+# Checks that depend on which core QEMU is emulating. Reporting features the
+# hardware does not have is the failure mode M2 exists to prevent, so the
+# same firmware is asserted against both an Armv9 core and an Armv8.0 one.
+CPU_CHECKS = {
+    "max": [
+        ("an Armv9 core reports SVE2", r"SVE2 = yes"),
+        ("an Armv9 core reports BTI", r"BTI = yes"),
+        ("an Armv9 core reports PAC", r"PAC \(APA\) = yes"),
+        ("an Armv9 core reports 4K granule support", r"granule 4K = yes"),
+    ],
+    "cortex-a57": [
+        ("an Armv8.0 core reports no SVE2", r"SVE2 = no"),
+        ("an Armv8.0 core reports no BTI", r"BTI = no"),
+        ("an Armv8.0 core reports no PAC", r"PAC \(APA\) = no"),
+        ("an Armv8.0 core reports no MTE", r"MTE = no"),
+    ],
+}
+
+
+def cpu_from(cmd):
+    """Which core the Makefile is pointing QEMU at, so the right expectations
+    are applied. Unknown cores run the common checks only."""
+    return cmd[cmd.index("-cpu") + 1] if "-cpu" in cmd else None
+
+
 def qemu_command():
     out = subprocess.run(["make", "-s", "qemu-cmd"], check=True,
                          capture_output=True, text=True).stdout
@@ -66,14 +91,18 @@ def boot(cmd):
 
 def main():
     subprocess.run(["make", "-s"], check=True)
-    output, status = boot(qemu_command())
+    cmd = qemu_command()
+    cpu = cpu_from(cmd)
+    output, status = boot(cmd)
 
     print("----- UART -----")
     print(output.replace("\r", ""), end="")
     print("----------------")
 
     failures = 0
-    for what, pattern in CHECKS:
+    checks = CHECKS + CPU_CHECKS.get(cpu, [])
+    print(f"checks for -cpu {cpu}: {len(checks)}")
+    for what, pattern in checks:
         ok = re.search(pattern, output) is not None
         failures += not ok
         print(f"{'PASS' if ok else 'FAIL'}  {what}")

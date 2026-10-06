@@ -1,6 +1,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "cpuid.h"
 #include "kprintf.h"
 #include "mmio.h"
 #include "semihost.h"
@@ -101,6 +102,10 @@ void fw_main(void)
     selftest_poll_timeout();
     selftest_brk();
     selftest_unaligned();
+
+    struct cpu_id id;
+    cpuid_read(&id);
+    cpuid_print(&id);
 
     /* Milestones 1-8 in docs/ROADMAP.md grow from here. */
 

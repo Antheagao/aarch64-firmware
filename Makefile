@@ -114,7 +114,7 @@ syntax-check:
 # only substitution is tests/unit/fake_uart.c in place of the PL011 driver,
 # so the code under test is the code that ships.
 UNIT_BIN    := $(BUILD)/unit
-UNIT_SRCS   := src/kprintf.c tests/unit/fake_uart.c tests/unit/test_kprintf.c
+UNIT_SRCS   := src/kprintf.c src/cpuid.c tests/unit/fake_uart.c tests/unit/unit.c tests/unit/main.c tests/unit/test_kprintf.c tests/unit/test_cpuid.c
 UNIT_CFLAGS := -std=gnu11 -g -O1 -Wall -Wextra -Werror -Iinclude -Itests/unit                -fsanitize=address,undefined -fno-sanitize-recover=all
 
 unit: $(UNIT_BIN)
