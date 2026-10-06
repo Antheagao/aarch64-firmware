@@ -17,6 +17,8 @@ SECTIONS
 {
     .text : {
         KEEP(*(.text.boot))             /* _start must be at the reset vector */
+        . = ALIGN(2048);                /* VBAR_EL3 ignores bits [10:0] */
+        KEEP(*(.text.vectors))
         *(.text .text.*)
     } > FLASH
 

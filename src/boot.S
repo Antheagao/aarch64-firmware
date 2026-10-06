@@ -10,6 +10,8 @@
  * copy .data into SRAM, and zero .bss.
  */
 
+#include "sysreg_bits.h"
+
     .section .text.boot, "ax"
     .global _start
 _start:
@@ -19,9 +21,37 @@ _start:
     and     x0, x0, #0xffffff           // Aff2.Aff1.Aff0
     cbnz    x0, park
 
-    /* TODO(milestone 1): set VBAR_EL3 and put SCTLR_EL3/SCR_EL3/CPTR_EL3 in
-     * a known state. Until then VBAR_EL3 is 0 (QEMU's reset value), so a
-     * synchronous exception "returns" to 0x200 -- the middle of kprintf. */
+    /* Hardware resets many EL3 control bits to UNKNOWN values, so firmware
+     * writes them before anything can depend on them. This happens first:
+     * until VBAR_EL3 is set it holds its reset value, and a fault would
+     * vector into whatever code happens to sit at offset 0x200. */
+
+    /* SCTLR_EL3: MMU, caches and icache stay off; A and SA turn on alignment
+     * and stack-alignment checking so a misaligned access faults where it
+     * happens rather than reading neighbouring bytes. The RES1 bits must be
+     * written as 1. Arm ARM (DDI 0487), SCTLR_EL3. */
+    ldr     x0, =(SCTLR_EL3_RES1 | SCTLR_EL3_A | SCTLR_EL3_SA)
+    msr     sctlr_el3, x0
+    isb                                 // the checks apply from the next instruction
+
+    /* SCR_EL3.RW = 1: the next lower EL is AArch64. NS stays 0, so lower ELs
+     * are Secure until M3 hands off to a Non-secure EL1. Interrupt routing
+     * (IRQ, FIQ, EA) is M5's, and is left at 0 deliberately rather than by
+     * omission. Arm ARM (DDI 0487), SCR_EL3. */
+    ldr     x0, =(SCR_EL3_RES1 | SCR_EL3_RW)
+    msr     scr_el3, x0
+
+    /* CPTR_EL3.TFP = 1 traps FP and Advanced SIMD at EL3. The build is
+     * -mgeneral-regs-only, so nothing should use them; trapping turns a
+     * mistake into a reported exception instead of UNKNOWN behavior. EZ
+     * stays 0, which traps SVE. M7 opens both. Arm ARM (DDI 0487), CPTR_EL3. */
+    ldr     x0, =CPTR_EL3_TFP
+    msr     cptr_el3, x0
+
+    /* Install the vector table. Arm ARM (DDI 0487), "Exception vectors". */
+    ldr     x0, =vectors
+    msr     vbar_el3, x0
+    isb                                 // exceptions use the new base from here
 
     ldr     x0, =__stack_top
     mov     sp, x0
