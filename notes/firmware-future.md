@@ -6,7 +6,6 @@ A parked row without an unblock condition is a row nobody ever picks up again.
 
 | Row | Unblocked when |
 |---|---|
-| M4: MMU and caches at EL1, permission and execute-never fault self-tests | M3 is merged and tagged `v0.3.0` |
 | M5: GICv3 and the generic timer | M4 is merged and tagged `v0.4.0` |
 | M6: PSCI over SMC and multi-core bring-up with ticket locks | M5 is merged and tagged `v0.5.0` |
 | M7: SVE2, PAC/BTI, and MTE enablement with fault demos, `docs/feature-enablement.md` | M6 is merged and tagged `v0.6.0` |
