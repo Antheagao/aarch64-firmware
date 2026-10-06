@@ -14,6 +14,21 @@ permissions:
   contents: read
 
 jobs:
+  format:
+    name: clang-format
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install clang-format
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang-format-18
+      # Pinned to 18, the version Ubuntu 24.04 ships: clang-format output
+      # differs between major versions, so an unpinned tool would make the
+      # check pass or fail depending on the runner image.
+      - name: Check formatting
+        run: make format-check CLANG_FORMAT=clang-format-18
+
   boot:
     name: boot (${{ matrix.toolchain }}, -cpu ${{ matrix.cpu }})
     runs-on: ubuntu-24.04

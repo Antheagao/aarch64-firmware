@@ -1,12 +1,12 @@
 # Firmware campaign: current queue
 
 **Last updated:** 2026-10-05.
-Batch 1 bounded every UART polling loop on branch `fix/uart-poll-timeout`.
-Next batch: row 1, add `.clang-format` and a format check in CI.
+Batch 2 added `.clang-format`, `make format` / `make format-check`, and a CI format job on branch `build/clang-format`.
+Next batch: row 1, put `SCTLR_EL3`, `SCR_EL3` and `CPTR_EL3` into a known reset state and install a vector table in `VBAR_EL3` (M1, part 1).
 
 This file is the work queue for the `campaign-loop` skill in `.claude/skills/campaign-loop/SKILL.md`.
 Milestone specs live in `docs/ROADMAP.md`; this file only tracks order and state.
-Parked rows and their unblock conditions are in `notes/firmware-future.md`.
+Parked rows and their unblock conditions are in `notes/firmware-future.md`, and finished batch detail is archived in `notes/firmware-previous.md`.
 
 ## How a batch runs here
 
@@ -21,25 +21,37 @@ Parked rows and their unblock conditions are in `notes/firmware-future.md`.
 
 | # | Row | Scope | Gate |
 |---|---|---|---|
-| 1 | `build`: add `.clang-format` and a format check | Encode the style in `docs/CODING_STANDARDS.md`; reformat existing files in their own commit | CI job runs `clang-format --dry-run --Werror` on `src/` and `include/` |
-| 2 | `feat(el3)`: known reset state and vector table (M1, part 1) | Set `SCTLR_EL3`, `SCR_EL3`, `CPTR_EL3` at reset; add `src/vectors.S` and install `VBAR_EL3` | New check prints `VBAR_EL3` equal to the `vectors` symbol |
-| 3 | `feat(el3)`: trap frame and ESR decode (M1, part 2) | Save x0-x30, `ELR_EL3`, `SPSR_EL3`; decode EC, IL, ISS, DFSC; print `FAR_EL3` and a register dump | `brk #0` self-test reports `EC=0x3c` and boot continues |
-| 4 | `test(el3)`: alignment fault self-test (M1, part 3) | Unaligned load recovered by advancing `ELR_EL3` | Check `EC=0x25 DFSC=0x21`; M1 marked done in `docs/ROADMAP.md`; tag `v0.1.0` |
-| 5 | `test`: host unit test scaffolding | `tests/unit/` runner, `make unit`, built with ASan and UBSan; first tests cover `kprintf` formatting | `make unit` passes locally and in a new CI job |
-| 6 | `feat(cpu)`: table-driven ID register decoder (M2) | Decode the ID registers listed in the roadmap into a printed feature table | Checks: SVE2, PAC, BTI, MTE present on `max` and absent on `cortex-a57`; tag `v0.2.0` |
-| 7 | [USER-GATED] Turn on "Automatically delete head branches" in the GitHub repo settings | The Claude session cannot delete remote branches, so merged branches stay until the owner deletes them | Merged branches disappear after merge |
+| 1 | `feat(el3)`: known reset state and vector table (M1, part 1) | Set `SCTLR_EL3`, `SCR_EL3`, `CPTR_EL3` at reset; add `src/vectors.S` and install `VBAR_EL3` | New check prints `VBAR_EL3` equal to the `vectors` symbol |
+| 2 | `feat(el3)`: trap frame and ESR decode (M1, part 2) | Save x0-x30, `ELR_EL3`, `SPSR_EL3`; decode EC, IL, ISS, DFSC; print `FAR_EL3` and a register dump | `brk #0` self-test reports `EC=0x3c` and boot continues |
+| 3 | `test(el3)`: alignment fault self-test (M1, part 3) | Unaligned load recovered by advancing `ELR_EL3` | Check `EC=0x25 DFSC=0x21`; M1 marked done in `docs/ROADMAP.md`; tag `v0.1.0` |
+| 4 | `test`: host unit test scaffolding | `tests/unit/` runner, `make unit`, built with ASan and UBSan; first tests cover `kprintf` formatting | `make unit` passes locally and in a new CI job |
+| 5 | `feat(cpu)`: table-driven ID register decoder (M2) | Decode the ID registers listed in the roadmap into a printed feature table | Checks: SVE2, PAC, BTI, MTE present on `max` and absent on `cortex-a57`; tag `v0.2.0` |
+| 6 | [USER-GATED] Turn on "Automatically delete head branches" in the GitHub repo settings | The Claude session cannot delete remote branches, so merged branches stay until the owner deletes them | Merged branches disappear after merge |
 
 ## Next batch plan (row 1)
 
-- Branch: `build/clang-format`.
-- Ubuntu 24.04 ships `clang-format` 18, so CI pins `clang-format-18` and the config uses only options it supports.
-- Start from `BasedOnStyle: LLVM`, then override to match `docs/CODING_STANDARDS.md`: `IndentWidth: 4`, `ColumnLimit: 100`, `BreakBeforeBraces: Linux`, `AllowShortFunctionsOnASingleLine: None`, `AlignConsecutiveMacros: Consecutive`, `AlignTrailingComments: true`.
-- Commit 1 adds `.clang-format` and a `make format` / `make format-check` pair.
-  Commit 2 is the mechanical reformat and nothing else.
-  Commit 3 adds the CI job and updates this file.
-- Gate: `make format-check` passes, CI runs it, and the `make test` matrix still passes.
+- Branch: `feat/m1-el3-reset-state`.
+- At reset, before anything else in `boot.S`, put the EL3 control registers into a known state.
+  Hardware resets many of their bits to UNKNOWN values, so firmware must write them rather than assume.
+  `SCTLR_EL3`: start from the architected reset value with `A` (alignment check) and `SA` (stack alignment check) set, `M`, `C` and `I` clear while the MMU is off.
+  `SCR_EL3`: `NS` clear (secure), `RW` set (lower EL is AArch64), `EA`/`FIQ`/`IRQ` routed as the roadmap needs.
+  `CPTR_EL3`: `TFP` clear is not needed yet because the build is `-mgeneral-regs-only`, so set it to trap and revisit in M7.
+- Add `src/vectors.S`: 16 entries, each `0x80` bytes, aligned to 2 KiB (`.balign 2048`), in the four groups the Arm ARM lists under "Exception vectors".
+  Each entry can branch to a shared stub for now; the trap frame and decode land in row 2.
+- Install it with `VBAR_EL3` and `isb()`.
+- Gate: a new `CHECKS` line prints `VBAR_EL3` and the harness asserts it equals the `vectors` symbol address, plus the full `make test` matrix.
 
 ## Batch log
+
+### Batch 2 (2026-10-05): clang-format and a CI format gate
+
+- Added `.clang-format` encoding the Formatting section of `docs/CODING_STANDARDS.md`: 4-space indent, 100 columns, Linux braces, aligned macro columns and trailing comments.
+- Added `make format` and `make format-check`, and a CI `clang-format` job pinned to `clang-format-18`, the version Ubuntu 24.04 ships, because output differs between major versions.
+- Reformatted `src/*.c` and `include/*.h` in a commit of its own so the mechanical diff stays reviewable.
+- Set `AlignEscapedNewlines: Left` after seeing the default right-alignment pad the `read_sysreg` continuations out to column 100 and bury the macro in whitespace.
+- Assembly is deliberately out of scope: clang-format has no AArch64 asm support, so `src/*.S` stays under the review rules in `docs/CODING_STANDARDS.md`.
+- Gate: `make format-check` clean locally with clang-format 18.1.8, and CI runs it on every push and PR.
+- Learning: the machine running this batch had no cross toolchain, QEMU or root, so `make test` could not run locally; the PR's CI matrix was the gate instead.
 
 ### Batch 1 (2026-10-05): bounded UART polling
 
