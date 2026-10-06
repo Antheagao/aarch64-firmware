@@ -31,6 +31,8 @@ That is exactly what CI runs.
 - `docs/CODING_STANDARDS.md`: C and assembly rules, algorithm and data structure choices
 - `docs/TESTING.md`: test layers, writing checks, debugging failures
 - `docs/PERFORMANCE.md`: how to measure and report performance
+- `docs/el-handoff.md`: every register bit set when EL3 hands control to EL1, and why
+- `docs/riscv-vs-arm.md`: the same ideas in RISC-V and AArch64, alongside the xv6-riscv work
 - `.claude/rules/`: short rules that load only when matching files are edited
 
 ## Hard rules
