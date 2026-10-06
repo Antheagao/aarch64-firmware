@@ -30,6 +30,11 @@ CHECKS = [
     ("bounded poll gives up on a stuck bit",
      r"selftest: poll gives up on a stuck bit after \d+ spins: ok"),
     ("bounded poll returns on a clear bit", r"selftest: poll returns at once on a clear bit: ok"),
+    ("brk #0 traps to EL3 and decodes as BRK",
+     r"selftest: brk #0 trapped: EC=0x3c: ok"),
+    ("the trap report names the exception class", r"EC=0x3c \(BRK instruction\)"),
+    ("the trap report dumps the saved registers", r"trap:   x 0=0x[0-9a-f]{16}"),
+    ("the handler steps over an expected fault", r"trap: expected, stepping over it"),
     ("no UART waits timed out during boot", r"uart: tx timeouts = 0\b"),
     ("milestone 0 completes", r"milestone 0: boot OK"),
 ]

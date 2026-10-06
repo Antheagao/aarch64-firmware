@@ -6,6 +6,7 @@
 #include "semihost.h"
 #include "sysreg.h"
 #include "sysreg_bits.h"
+#include "trapframe.h"
 #include "uart.h"
 
 #define SELFTEST_POLL_SPINS 1000U
@@ -50,6 +51,19 @@ static void report_el3_state(void)
             (sctlr & SCTLR_EL3_A) && (sctlr & SCTLR_EL3_SA) ? "ok" : "FAIL");
 }
 
+/* Take a deliberate exception. This proves the whole path at once: the
+ * vector table is installed, the frame is saved and restored correctly, the
+ * syndrome decodes, and the firmware resumes instead of hanging. */
+static void selftest_brk(void)
+{
+    trap_expect_next();
+    __asm__ volatile("brk #0");
+
+    uint64_t esr = trap_last_esr();
+    kprintf("selftest: brk #0 trapped: EC=0x%02x: %s\n", ESR_EC(esr),
+            ESR_EC(esr) == ESR_EC_BRK ? "ok" : "FAIL");
+}
+
 /* First C code after reset; boot.S calls it on the primary CPU only. */
 void fw_main(void)
 {
@@ -61,6 +75,7 @@ void fw_main(void)
 
     report_el3_state();
     selftest_poll_timeout();
+    selftest_brk();
 
     /* Milestones 1-8 in docs/ROADMAP.md grow from here. */
 
