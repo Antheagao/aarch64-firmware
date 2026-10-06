@@ -1,8 +1,8 @@
 # Firmware campaign: current queue
 
 **Last updated:** 2026-10-05.
-Batch 15 added `clang-tidy` as `make lint` and a CI job, on branch `ci/clang-tidy`.
-The queue now holds only a user-gated row, so the next session should run the close-out in `.claude/skills/campaign-loop/SKILL.md` or pull M4 forward from `notes/firmware-future.md`, which `v0.3.0` unblocked.
+Batch 16 refilled the queue: `v0.3.0` unblocked M4, so M4 is split into PR-sized rows below.
+Next batch: row 1, the page table builder, which is pure logic and so gets host unit tests before any of it runs on the target.
 
 This file is the work queue for the `campaign-loop` skill in `.claude/skills/campaign-loop/SKILL.md`.
 Milestone specs live in `docs/ROADMAP.md`; this file only tracks order and state.
@@ -21,15 +21,31 @@ Parked rows and their unblock conditions are in `notes/firmware-future.md`, and 
 
 | # | Row | Scope | Gate |
 |---|---|---|---|
-| 1 | [USER-GATED] Turn on "Automatically delete head branches" in the GitHub repo settings | The Claude session cannot delete remote branches, so merged branches stay until the owner deletes them | Merged branches disappear after merge |
+| 1 | `feat(mmu)`: page table builder | Build an identity map with a 4 KiB granule and a 39-bit VA, using the largest block that fits (1 GiB, then 2 MiB, then 4 KiB) out of a static bump-allocated pool of tables. Pure logic, no register writes | Host unit tests: the right level and block size per range, pool exhaustion reported rather than overrunning, and attributes landing in the right descriptor bits |
+| 2 | `feat(mmu)`: turn the MMU on at EL1 | Program `MAIR_EL1` (attr0 Normal write-back `0xff`, attr1 Device-nGnRnE `0x00`), `TCR_EL1` (T0SZ, IRGN/ORGN, SH, TG0, IPS) and `TTBR0_EL1`, then set `SCTLR_EL1.M/C/I` with the `dsb`/`isb`/`tlbi` sequence the Arm ARM requires | Check EL1 still reaches its exit with the MMU on; the barriers are the risk, so a hang here is the expected failure mode |
+| 3 | `feat(mmu)`: per-section permissions | `.text` RX, `.rodata` R, `.data`/`.bss`/stack RW and XN, UART and GIC as Device. Align the EL1 linker sections to page boundaries so the permissions can differ | Check the printed map matches the linker symbols |
+| 4 | `test(mmu)`: permission and execute-never self-tests | Write to `.rodata` and jump into `.data`, recovering from each | Check `EC=0x25 DFSC=0x0f` (permission fault, level 3) and `EC=0x21` (instruction abort); M4 marked done; tag `v0.4.0` |
+| 5 | `build`: drop `-mstrict-align` for the EL1 image | Only once EL1 runs on Normal memory, and only for that image: the firmware keeps it while the MMU is off at EL3 | The matrix still passes with the flag removed from the EL1 build alone |
+| 6 | [USER-GATED] Turn on "Automatically delete head branches" in the GitHub repo settings | The Claude session cannot delete remote branches, so merged branches stay until the owner deletes them | Merged branches disappear after merge |
 
-## Next batch plan
+## Next batch plan (row 1)
 
-Only a user-gated row is left, which is a stop condition for the loop.
-M4, the MMU and caches, is unblocked now that M3 is merged and tagged `v0.3.0`: move it out of `notes/firmware-future.md` and split it into PR-sized rows.
-A `cppcheck` row is parked there too, split out of this batch because it cannot be run on this machine.
+- Branch: `feat/m4-page-tables`.
+- Keep the builder pure: it takes a description of the regions and fills a caller-provided pool, writing no system registers. That is what makes it unit-testable on the host, and the host tests are the point of doing it first, because a wrong descriptor bit shows up on the target as a hang with nothing to read.
+- Represent a region as `{virtual base, size, memory type, permissions}` and let the builder choose the level. The rule from `docs/CODING_STANDARDS.md` is the largest block that fits: a 1 GiB block at level 1, a 2 MiB block at level 2, otherwise 4 KiB pages at level 3.
+- The pool is a static array of 4 KiB tables handed out by a bump pointer, so the worst case is known at link time and there is no heap. Exhausting it must return an error the caller can print, not run off the end.
+- Descriptor bits to get right, all from the Arm ARM under "Armv8 translation table level 3 descriptor formats": valid and table/block bits [1:0], the attribute index `AttrIndx` [4:2], `AP` [7:6], `SH` [9:8], the access flag `AF` [10], and `UXN`/`PXN` [54:53].
+- The access flag is the classic omission: a descriptor with `AF` clear faults on first use even though every other bit is right.
+- Gate: host unit tests only. Nothing is programmed into the MMU this row, so nothing can hang.
 
 ## Batch log
+
+### Batch 16 (2026-10-06): refill the queue for M4
+
+- No code. M3 merging and tagging `v0.3.0` met M4's unblock condition, so M4 moved out of `notes/firmware-future.md` into the queue as five PR-sized rows: build the tables, turn the MMU on, set per-section permissions, prove the faults, then drop `-mstrict-align` for the EL1 image.
+- The split puts the page table builder first and keeps it pure, writing no system registers, so it can be unit-tested on the host before anything depends on it. A wrong descriptor bit shows up on the target as a hang with nothing to read, which is the worst kind of failure to debug and the easiest to prevent.
+- Dropping `-mstrict-align` is its own row rather than a footnote on the permissions row, because it only becomes safe once EL1 is actually running on Normal memory, and only for that image: the firmware keeps the flag while the MMU is off at EL3.
+- The user-gated row stays in the queue rather than being parked. It is not blocked on a condition that will arrive on its own; it needs the owner to click something.
 
 ### Batch 15 (2026-10-06): clang-tidy
 
