@@ -13,9 +13,27 @@
 #include "kprintf.h"
 #include "semihost.h"
 #include "sysreg.h"
+#include "sysreg_bits.h"
+#include "trapframe.h"
 #include "uart.h"
 
 void kernel_main(void) __attribute__((noreturn));
+
+/* Defined in src/vectors.S, assembled for this image with TRAP_EL=1. */
+extern char vectors[];
+
+/* Fault on purpose at EL1, to prove EL1 handles its own exceptions. If this
+ * were reported by EL3 the trap went to the wrong level: a lower-EL fault
+ * only reaches EL3 when EL1 has not claimed it. */
+static void selftest_el1_brk(void)
+{
+    trap_expect_next();
+    __asm__ volatile("brk #0");
+
+    uint64_t esr = trap_last_esr();
+    kprintf("kernel: brk #0 trapped at EL1: EC=0x%02x: %s\n", ESR_EC(esr),
+            ESR_EC(esr) == ESR_EC_BRK ? "ok" : "FAIL");
+}
 
 void kernel_main(void)
 {
@@ -27,6 +45,15 @@ void kernel_main(void)
     /* EL1 cannot read SCR_EL3, so it reports only what it can actually
      * observe. The security state is reported by EL3, which set it. */
     kprintf("kernel: running at EL%u\n", current_el());
+
+    /* EL1 gets its own vectors before anything can fault. VBAR_EL1 has the
+     * same 2 KiB alignment rule as VBAR_EL3. */
+    write_sysreg(vbar_el1, (uint64_t)(uintptr_t)vectors);
+    isb();
+    kprintf("kernel: vector table installed: %s\n",
+            (read_sysreg(vbar_el1) == (uint64_t)(uintptr_t)vectors) ? "ok" : "FAIL");
+
+    selftest_el1_brk();
 
     semihost_exit(0);
 }

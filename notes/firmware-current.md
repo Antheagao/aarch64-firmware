@@ -1,8 +1,8 @@
 # Firmware campaign: current queue
 
 **Last updated:** 2026-10-05.
-Batch 11 dropped to EL1 on branch `feat/m3-drop-to-el1`: the firmware now erets into the loaded image and the EL1 kernel ends the run.
-Next batch: row 1, give EL1 its own vector table and crash reporter behind `VBAR_EL1`.
+Batch 12 gave EL1 its own vectors on branch `feat/m3-el1-vectors`, by building one crash reporter into both images.
+Next batch: row 1, make an `smc #0` from EL1 land in the EL3 handler, which finishes M3 and tags `v0.3.0`.
 
 This file is the work queue for the `campaign-loop` skill in `.claude/skills/campaign-loop/SKILL.md`.
 Milestone specs live in `docs/ROADMAP.md`; this file only tracks order and state.
@@ -21,22 +21,29 @@ Parked rows and their unblock conditions are in `notes/firmware-future.md`, and 
 
 | # | Row | Scope | Gate |
 |---|---|---|---|
-| 1 | `feat(el1)`: EL1 vector table and crash reporter | Reuse the M1 trap frame and decode behind `VBAR_EL1`; a deliberate fault at EL1 is reported by EL1, not EL3 | Check an EL1 trap report, and that the boot continues |
-| 2 | `feat(el3)`: handle `smc #0` from EL1 | EL3 synchronous handler for the lower-EL AArch64 vector, decoding `EC=0x17` | Check an EL3 trap report with `EC=0x17`; tag `v0.3.0` |
-| 3 | `docs`: `el-handoff.md` and `riscv-vs-arm.md` | Every bit set in `SCR_EL3`, `HCR_EL2` and `SPSR_EL3` and why; then map the same ideas onto RISC-V from the xv6-riscv work | Both files exist and the roadmap links them |
-| 4 | `ci`: `clang-tidy` and `cppcheck` job | Static analysis over `src/` and `include/`, with the checks that fire on this code either fixed or explicitly disabled with a reason | New CI job passes, and a deliberately introduced defect makes it fail |
-| 5 | [USER-GATED] Turn on "Automatically delete head branches" in the GitHub repo settings | The Claude session cannot delete remote branches, so merged branches stay until the owner deletes them | Merged branches disappear after merge |
+| 1 | `feat(el3)`: handle `smc #0` from EL1 | EL3 synchronous handler for the lower-EL AArch64 vector, decoding `EC=0x17` | Check an EL3 trap report with `EC=0x17`; tag `v0.3.0` |
+| 2 | `docs`: `el-handoff.md` and `riscv-vs-arm.md` | Every bit set in `SCR_EL3`, `HCR_EL2` and `SPSR_EL3` and why; then map the same ideas onto RISC-V from the xv6-riscv work | Both files exist and the roadmap links them |
+| 3 | `ci`: `clang-tidy` and `cppcheck` job | Static analysis over `src/` and `include/`, with the checks that fire on this code either fixed or explicitly disabled with a reason | New CI job passes, and a deliberately introduced defect makes it fail |
+| 4 | [USER-GATED] Turn on "Automatically delete head branches" in the GitHub repo settings | The Claude session cannot delete remote branches, so merged branches stay until the owner deletes them | Merged branches disappear after merge |
 
 ## Next batch plan (row 1)
 
-- Branch: `feat/m3-el1-vectors`.
-- Give EL1 its own vectors. The M1 work is reusable but not shareable as it stands: `src/vectors.S` reads `ELR_EL3`, `ESR_EL3` and `FAR_EL3` by name, and `src/trap.c` prints them as EL3's. Decide deliberately between parameterising the existing files and giving the EL1 image its own copy, and record which and why, because "most of the M1 code should be reusable" is the kind of claim that quietly becomes a copy-paste.
-- The EL1 image is a separate link, so whatever is shared has to work in both: `include/trapframe.h` already holds the layout, and the offsets are exception-level agnostic.
-- Install the table with `VBAR_EL1` and take a deliberate fault at EL1, the `brk #0` pattern from M1.
-- The point of the row is that the fault is reported *by EL1*. If it is reported by EL3 instead, the trap went to the wrong level, which is a real failure and not a cosmetic one.
-- Gate: a check for an EL1 trap report with `EC=0x3c`, that the EL1 image continues afterwards and still exits 0, and that no EL3 trap report appears for it.
+- Branch: `feat/m3-smc`.
+- Execute `smc #0` from the EL1 kernel. It lands at EL3 in the lower-EL AArch64 synchronous vector, which is index 8, and the existing decoder already names `EC=0x17`.
+- The EL3 handler currently parks anything it was not told to expect, so an SMC would hang the run. Teach it that a lower-EL synchronous exception is a request rather than a fault: report it, then return to EL1 by advancing `ELR_EL3` past the `smc`, the same stepping the self-tests use.
+- Keep it to the plumbing. This row proves the call arrives and control returns; the SMCCC argument convention and a real function table are M6's, so resist implementing PSCI here.
+- Watch the expected-trap hook: it is a single flag per image, and EL3's copy is now reached from two directions, its own self-tests and calls from EL1. If that gets confusing, the flag is the thing to replace, not to work around.
+- Gate: an EL3 trap report with `EC=0x17` and `vector=8`, the kernel printing a line after the SMC returns, and the run still exiting 0; then mark M3 done and tag `v0.3.0`.
 
 ## Batch log
+
+### Batch 12 (2026-10-06): EL1 vectors, one crash reporter for both levels
+
+- The row asked for a deliberate decision between reusing the M1 code and copying it. Reuse won, by parameterising: `src/vectors.S` and `src/trap.c` are built into both images with `-DTRAP_EL=3` for the firmware and `-DTRAP_EL=1` for the kernel. The two differ only in which banked syndrome registers they read, so a copy would have been two crash reporters drifting apart.
+- The report now names the level it was taken at. That is not cosmetic: a fault at EL1 showing up in an EL3 report means it went to the wrong level, and the check asserts `trap: EL1 vector=4`, which is EL1's own current-EL-with-SPx vector rather than EL3's lower-EL one.
+- `el3_trap` became `trap_handler` and `el3_trap_common` became `trap_common`, since neither is EL3-specific any more.
+- The kernel installs `VBAR_EL1`, reads it back, and takes a deliberate `brk #0`. The trap frame header needed no change: the layout is the same at every exception level, which is why it was worth putting the offsets in a shared header in the first place.
+- The host gates compile this code too, so `-DTRAP_EL=3` had to reach `HOST_CFLAGS` and `UNIT_CFLAGS`. The `#error` in `src/trap.c` made that a loud failure rather than a silent one.
 
 ### Batch 11 (2026-10-06): drop to EL1
 

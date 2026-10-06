@@ -89,9 +89,10 @@ This is what boot firmware is for: set up the lower exception levels and hand of
   With `FEAT_SEL2`, which `-cpu max` implements, `HCR_EL2` and `SCTLR_EL1` are banked by security state and `SCR_EL3.NS` selects which bank EL3 sees.
   So `SCR_EL3.NS` is set *first* and those registers are written afterwards; doing it the other way configures the Secure copies and leaves the Non-secure ones UNKNOWN.
   `CNTHCTL_EL2` is not needed until M5 introduces the timer.
-- [ ] Give EL1 its own vector table (`VBAR_EL1`) and crash reporter.
-- [ ] Make an `smc #0` from EL1 land in the EL3 handler.
+- [x] Give EL1 its own vector table (`VBAR_EL1`) and crash reporter.
   Most of the M1 code should be reusable.
+  It was, by parameterising rather than copying: `src/vectors.S` and `src/trap.c` are built into both images with `TRAP_EL` selecting the banked syndrome registers and the level the report names.
+- [ ] Make an `smc #0` from EL1 land in the EL3 handler.
 
 **Done when** the harness sees `kernel: running at EL1` and an EL3 trap report with `EC=0x17` (SMC from AArch64).
 
