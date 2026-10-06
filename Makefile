@@ -5,6 +5,8 @@
 #   make debug      boot paused, waiting for GDB on localhost:1234
 #   make gdb        attach GDB to a running `make debug`
 #   make test       boot and assert on the UART output (what CI runs)
+#   make format     reformat C sources and headers with clang-format
+#   make format-check  fail if any C source or header is misformatted
 #   make LLVM=1     build with clang + lld instead of GCC + binutils
 #   make CPU=cortex-a57 run   try a different core (default: max, i.e. Armv9 features)
 
@@ -50,7 +52,7 @@ MACHINE   := virt,secure=on,virtualization=on,gic-version=3
 QEMUFLAGS := -M $(MACHINE) -cpu $(CPU) -smp $(SMP) -m 512M -nographic \
              -bios $(BIN) -semihosting-config enable=on,target=native
 
-.PHONY: all run debug gdb test qemu-cmd disasm clean
+.PHONY: all run debug gdb test format format-check qemu-cmd disasm clean
 
 all: $(BIN)
 
@@ -79,6 +81,18 @@ gdb:
 
 test: $(BIN)
 	python3 tests/run_tests.py
+
+# Formatting. CI pins clang-format-18, the version Ubuntu 24.04 ships, because
+# the output differs between major versions. Assembly is not covered:
+# clang-format has no AArch64 asm support, so src/*.S follows review alone.
+CLANG_FORMAT ?= clang-format
+FORMAT_SRCS  := $(wildcard src/*.c include/*.h)
+
+format:
+	$(CLANG_FORMAT) -i $(FORMAT_SRCS)
+
+format-check:
+	$(CLANG_FORMAT) --dry-run --Werror $(FORMAT_SRCS)
 
 # Used by the test harness so it can run (and kill) QEMU directly.
 qemu-cmd:
