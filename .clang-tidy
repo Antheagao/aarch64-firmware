@@ -1,0 +1,62 @@
+# Static analysis for freestanding firmware.
+#
+# Most clang-tidy checks assume hosted C. The families below are enabled
+# wholesale and every exclusion carries its reason, because a suppression
+# list without reasons is a worse artifact than no linter: nobody can tell
+# later which entries were judgement and which were shrugging.
+Checks: >
+  -*,
+  bugprone-*,
+  clang-analyzer-*,
+  misc-*,
+  performance-*,
+  portability-*,
+  readability-*,
+  -readability-braces-around-statements,
+  -readability-magic-numbers,
+  -readability-identifier-length,
+  -readability-function-cognitive-complexity,
+  -readability-isolate-declaration,
+  -bugprone-easily-swappable-parameters,
+  -misc-include-cleaner,
+  -performance-no-int-to-ptr
+
+# Why each exclusion:
+#
+# readability-braces-around-statements
+#   docs/CODING_STANDARDS.md does not require braces on single statements,
+#   and the code is written without them throughout. Adding 56 of them is
+#   churn, not safety.
+#
+# readability-magic-numbers
+#   Register field positions and widths are numbers by nature. The ID
+#   register decoder in src/cpuid.c is literally a table of shifts and
+#   widths, and naming each one would move the numbers, not remove them.
+#
+# readability-identifier-length
+#   Short names like f, s, v and n are idiomatic here, and the Arm ARM's own
+#   field names are short. Longer names would not make the code clearer.
+#
+# readability-function-cognitive-complexity
+#   The kprintf format parser and the trap decoder are genuinely branchy.
+#   Splitting them to satisfy a metric would spread one decision over
+#   several functions.
+#
+# readability-isolate-declaration
+#   Conflicts with the existing style and with clang-format's output.
+#
+# bugprone-easily-swappable-parameters
+#   Fires on (shift, width) and similar pairs that are the same type by
+#   nature. Wrapping them in structs to satisfy it would obscure the call
+#   sites.
+#
+# misc-include-cleaner
+#   Wants every transitively used declaration included directly, which
+#   disagrees with how this project groups its headers.
+#
+# performance-no-int-to-ptr
+#   Memory-mapped I/O is integer-to-pointer by definition. include/mmio.h
+#   exists precisely so that conversion happens in one audited place.
+
+WarningsAsErrors: '*'
+HeaderFilterRegex: '(include|src|kernel)/.*\.h$'

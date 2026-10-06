@@ -14,13 +14,16 @@
 #include "loader.h"
 #include "platform.h"
 
-/* Defined by src/kernel_image.S around the .incbin. */
-extern const uint8_t kernel_image_start[];
-extern const uint8_t kernel_image_end[];
+/* Defined by src/kernel_image.S around the .incbin. Declared as uint64_t
+ * because that is what they are: the assembler aligns both labels to 8, and
+ * saying so here removes the cast that would otherwise have to launder the
+ * alignment past the compiler. */
+extern const uint64_t kernel_image_start[];
+extern const uint64_t kernel_image_end[];
 
 size_t kernel_image_size(void)
 {
-    return (size_t)(kernel_image_end - kernel_image_start);
+    return (size_t)(kernel_image_end - kernel_image_start) * sizeof(uint64_t);
 }
 
 bool kernel_load(void)
@@ -28,14 +31,16 @@ bool kernel_load(void)
     size_t size = kernel_image_size();
     /* The MMU is off, so DRAM is Device memory: every access has to be
      * naturally aligned, and the assembler padded the image to suit. */
-    const uint64_t *src = (const uint64_t *)(const void *)kernel_image_start;
+    const uint64_t *src = kernel_image_start;
     volatile uint64_t *dst = (volatile uint64_t *)DRAM_BASE;
     size_t words = size / sizeof(uint64_t);
 
     kprintf("kernel: image %u bytes at %p\n", (unsigned)size, (const void *)kernel_image_start);
 
-    if (size == 0 || size % sizeof(uint64_t) != 0) {
-        kprintf("kernel: image size is not a multiple of 8: FAIL\n");
+    /* The image is a whole number of 64-bit words by construction now, so
+     * only the empty case is worth guarding. */
+    if (size == 0) {
+        kprintf("kernel: image is empty: FAIL\n");
         return false;
     }
 
