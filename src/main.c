@@ -3,6 +3,7 @@
 
 #include "cpuid.h"
 #include "kprintf.h"
+#include "loader.h"
 #include "mmio.h"
 #include "semihost.h"
 #include "sysreg.h"
@@ -102,6 +103,8 @@ void fw_main(void)
     selftest_poll_timeout();
     selftest_brk();
     selftest_unaligned();
+
+    kernel_load();
 
     struct cpu_id id;
     cpuid_read(&id);

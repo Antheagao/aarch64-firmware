@@ -44,6 +44,7 @@ ASFLAGS := -g -Iinclude -MMD -MP
 LDFLAGS := -nostdlib -static -T linker.ld
 
 SRCS := $(wildcard src/*.c src/*.S)
+KERNEL_SRCS := kernel/start.S kernel/main.c src/uart.c src/kprintf.c
 OBJS := $(patsubst src/%,$(BUILD)/%.o,$(SRCS))
 
 QEMU      ?= qemu-system-aarch64
@@ -54,9 +55,11 @@ MACHINE   := virt,secure=on,virtualization=on,gic-version=3
 QEMUFLAGS := -M $(MACHINE) -cpu $(CPU) -smp $(SMP) -m 512M -nographic \
              -bios $(BIN) -semihosting-config enable=on,target=native
 
-.PHONY: all run debug gdb test format format-check syntax-check unit qemu-cmd disasm clean
+.PHONY: all run debug gdb test format format-check syntax-check unit kernel qemu-cmd disasm clean
 
 all: $(BIN)
+
+kernel: $(BUILD)/kernel.bin
 
 $(BIN): $(ELF)
 	$(OBJCOPY) -O binary $< $@
@@ -71,6 +74,30 @@ $(BUILD)/%.c.o: src/%.c
 $(BUILD)/%.S.o: src/%.S
 	@mkdir -p $(@D)
 	$(CC) $(ASFLAGS) -c $< -o $@
+
+# The EL1 image: a second link of the same compiler flags against its own
+# linker script, so it lands at DRAM_BASE instead of flash. Its objects go
+# under build/kernel/ keyed by source path, so src/uart.c can be built once
+# for each image without the two colliding.
+KERNEL_OBJS := $(addprefix $(BUILD)/kernel/,$(addsuffix .o,$(KERNEL_SRCS)))
+
+$(BUILD)/kernel/%.c.o: %.c
+	@mkdir -p $(@D)
+	$(CC) $(CFLAGS) -c $< -o $@
+
+$(BUILD)/kernel/%.S.o: %.S
+	@mkdir -p $(@D)
+	$(CC) $(ASFLAGS) -c $< -o $@
+
+$(BUILD)/kernel.elf: $(KERNEL_OBJS) kernel/kernel.ld
+	$(LD) -nostdlib -static -T kernel/kernel.ld -o $@ $(KERNEL_OBJS)
+
+$(BUILD)/kernel.bin: $(BUILD)/kernel.elf
+	$(OBJCOPY) -O binary $< $@
+
+# src/kernel_image.S pulls the blob in with .incbin, so it cannot be
+# assembled until the blob exists.
+$(BUILD)/kernel_image.S.o: $(BUILD)/kernel.bin
 
 run: $(BIN)
 	$(QEMU) $(QEMUFLAGS)
@@ -88,7 +115,7 @@ test: $(BIN)
 # the output differs between major versions. Assembly is not covered:
 # clang-format has no AArch64 asm support, so src/*.S follows review alone.
 CLANG_FORMAT ?= clang-format
-FORMAT_SRCS  := $(wildcard src/*.c include/*.h)
+FORMAT_SRCS  := $(wildcard src/*.c kernel/*.c include/*.h)
 
 format:
 	$(CLANG_FORMAT) -i $(FORMAT_SRCS)
@@ -106,7 +133,7 @@ HOST_CC ?= cc
 HOST_CFLAGS := -fsyntax-only -std=gnu11 -Wall -Wextra -Werror -ffreestanding -Iinclude
 
 syntax-check:
-	@for f in $(wildcard src/*.c); do 		echo "  SYNTAX  $$f"; 		$(HOST_CC) $(HOST_CFLAGS) $$f || exit 1; 	done
+	@for f in $(wildcard src/*.c kernel/*.c); do 		echo "  SYNTAX  $$f"; 		$(HOST_CC) $(HOST_CFLAGS) $$f || exit 1; 	done
 
 # Host unit tests. Logic that takes values as arguments and returns results
 # can be compiled for the host and tested in milliseconds, with sanitizers
@@ -134,4 +161,4 @@ disasm: $(ELF)
 clean:
 	rm -rf $(BUILD)
 
--include $(OBJS:.o=.d)
+-include $(OBJS:.o=.d) $(KERNEL_OBJS:.o=.d)

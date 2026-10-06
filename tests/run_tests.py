@@ -39,6 +39,9 @@ CHECKS = [
      r"selftest: unaligned load trapped: EC=0x25 DFSC=0x21: ok"),
     ("the abort report decodes the fault status and address",
      r"DFSC=0x21 \(alignment fault\)"),
+    ("the EL1 image is embedded in the firmware", r"kernel: image \d+ bytes at 0x[0-9a-f]{16}"),
+    ("the EL1 image is copied into DRAM and reads back identical",
+     r"kernel: copied to 0x0000000040000000: ok"),
     ("no UART waits timed out during boot", r"uart: tx timeouts = 0\b"),
     ("milestone 0 completes", r"milestone 0: boot OK"),
 ]
