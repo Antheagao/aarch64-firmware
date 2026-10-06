@@ -47,11 +47,12 @@ This is fixed first, because every later milestone depends on readable crashes.
   Install it with `VBAR_EL3`.
 - [x] At reset, put `SCTLR_EL3`, `SCR_EL3` and `CPTR_EL3` into a known state, because real hardware resets many of their bits to UNKNOWN values.
   Turn on alignment checking with `SCTLR_EL3.A`.
-- [ ] On entry, save x0-x30, `ELR_EL3` and `SPSR_EL3` into a trap frame on the stack, then call a C handler.
-- [ ] Decode `ESR_EL3`: EC (exception class), IL, and ISS.
+- [x] On entry, save x0-x30, `ELR_EL3` and `SPSR_EL3` into a trap frame on the stack, then call a C handler.
+- [x] Decode `ESR_EL3`: EC (exception class), IL, and ISS.
   For aborts, also decode DFSC and print `FAR_EL3`.
   Print a register dump.
 - [ ] Add a self-test that triggers `brk #0` and an unaligned load, recovers from each by advancing `ELR_EL3`, and continues.
+  `brk #0` is done; the unaligned load is the next queue row.
 
 **Done when** the harness sees `EC=0x3c` (BRK) and `EC=0x25` with `DFSC=0x21` (alignment fault), and the firmware still reaches the end of the boot.
 

@@ -1,8 +1,8 @@
 # Firmware campaign: current queue
 
 **Last updated:** 2026-10-05.
-Batch 4 added `make syntax-check`, a host compile gate, on branch `build/host-syntax-check`.
-Next batch: row 1, save a trap frame and decode `ESR_EL3` so a crash prints EC, IL, ISS and a register dump (M1, part 2).
+Batch 5 added the trap frame, the `ESR_EL3` decode and a `brk #0` self-test on branch `feat/m1-trap-frame`.
+Next batch: row 1, the alignment fault self-test, which finishes M1 and tags `v0.1.0`.
 
 This file is the work queue for the `campaign-loop` skill in `.claude/skills/campaign-loop/SKILL.md`.
 Milestone specs live in `docs/ROADMAP.md`; this file only tracks order and state.
@@ -21,27 +21,33 @@ Parked rows and their unblock conditions are in `notes/firmware-future.md`, and 
 
 | # | Row | Scope | Gate |
 |---|---|---|---|
-| 1 | `feat(el3)`: trap frame and ESR decode (M1, part 2) | Save x0-x30, `ELR_EL3`, `SPSR_EL3`; decode EC, IL, ISS, DFSC; print `FAR_EL3` and a register dump | `brk #0` self-test reports `EC=0x3c` and boot continues |
-| 2 | `test(el3)`: alignment fault self-test (M1, part 3) | Unaligned load recovered by advancing `ELR_EL3` | Check `EC=0x25 DFSC=0x21`; M1 marked done in `docs/ROADMAP.md`; tag `v0.1.0` |
-| 3 | `test`: host unit test scaffolding | `tests/unit/` runner, `make unit`, built with ASan and UBSan; first tests cover `kprintf` formatting | `make unit` passes locally and in a new CI job |
-| 4 | `feat(cpu)`: table-driven ID register decoder (M2) | Decode the ID registers listed in the roadmap into a printed feature table | Checks: SVE2, PAC, BTI, MTE present on `max` and absent on `cortex-a57`; tag `v0.2.0` |
-| 5 | [USER-GATED] Turn on "Automatically delete head branches" in the GitHub repo settings | The Claude session cannot delete remote branches, so merged branches stay until the owner deletes them | Merged branches disappear after merge |
+| 1 | `test(el3)`: alignment fault self-test (M1, part 3) | Unaligned load recovered by advancing `ELR_EL3` | Check `EC=0x25 DFSC=0x21`; M1 marked done in `docs/ROADMAP.md`; tag `v0.1.0` |
+| 2 | `test`: host unit test scaffolding | `tests/unit/` runner, `make unit`, built with ASan and UBSan; first tests cover `kprintf` formatting | `make unit` passes locally and in a new CI job |
+| 3 | `feat(cpu)`: table-driven ID register decoder (M2) | Decode the ID registers listed in the roadmap into a printed feature table | Checks: SVE2, PAC, BTI, MTE present on `max` and absent on `cortex-a57`; tag `v0.2.0` |
+| 4 | [USER-GATED] Turn on "Automatically delete head branches" in the GitHub repo settings | The Claude session cannot delete remote branches, so merged branches stay until the owner deletes them | Merged branches disappear after merge |
 
 ## Next batch plan (row 1)
 
-- Branch: `feat/m1-trap-frame`.
-- Replace the `b el3_park` stub in each `vector_entry` with a save sequence: push x0-x30 plus `ELR_EL3` and `SPSR_EL3` onto the stack as a trap frame, pass its address in x0, and call a C handler.
-  Use `stp`/`ldp` pairs, keep SP 16-byte aligned, and pass the vector index so the handler can name which of the 16 entries fired.
-- Define the frame as a C struct and check its layout against the assembly with `_Static_assert` on `sizeof` and `offsetof`, as `docs/CODING_STANDARDS.md` requires.
-- Decode `ESR_EL3` in C: EC bits [31:26], IL bit [25], ISS bits [24:0].
-  For EC 0x24/0x25 (data abort) also print `FAR_EL3` and the DFSC in ISS bits [5:0].
-  Name the common EC values from the Arm ARM "ESR_ELx, Exception Syndrome Register" table rather than printing the raw number alone.
-- Print the register dump through `kprintf`, four registers per line.
-- Self-test: execute `brk #0`, which raises EC 0x3c, then recover by advancing `ELR_EL3` past the instruction (`elr += 4`) so the boot continues.
-  `brk` is the cheapest exception to raise deliberately and needs no MMU.
-- Gate: a `CHECKS` line matching `EC=0x3c` and the existing `milestone 0: boot OK` line still printing afterwards, proving the handler returned rather than hung, plus the full `make test` matrix.
+- Branch: `test/m1-alignment-fault`.
+- Add a second self-test beside `selftest_brk`: arm the expected-trap hook, then do a deliberately unaligned 64-bit load, which faults because `SCTLR_EL3.A` is set and, with the MMU off, all memory is Device.
+  Build the misaligned pointer so the compiler cannot fold the access away: take the address of an aligned buffer, add 1, and go through a `volatile` pointer.
+- Expect `EC=0x25` (data abort, same EL) with `DFSC=0x21` (alignment fault), and `FAR_EL3` holding the misaligned address.
+  The decode and the `FAR`/`DFSC` printing already exist, so this row is the self-test plus its checks.
+- Watch for `-Wcast-align` style warnings under `-Werror`: the cast is deliberate, so if a warning appears, suppress it locally with a comment saying why rather than weakening the build flags.
+- Gate: new `CHECKS` lines for `EC=0x25`, `DFSC=0x21 (alignment fault)`, and the boot still reaching `milestone 0: boot OK`; then mark M1 done in `docs/ROADMAP.md` and tag `v0.1.0`.
 
 ## Batch log
+
+### Batch 5 (2026-10-06): trap frame and ESR decode
+
+- `include/trapframe.h` defines the frame twice over: byte offsets for `src/vectors.S` and a C struct for `src/trap.c`, with ten `_Static_assert`s tying them together so a layout mismatch is a build error instead of a crash inside the crash handler.
+- `src/vectors.S` now saves x0-x30, `ELR_EL3`, `SPSR_EL3`, `ESR_EL3`, `FAR_EL3` and the vector index, calls the C handler with the frame, then restores and `eret`s. Each 0x80-byte entry only saves x0/x1 and its index before branching to the common path, because that is all a vector slot has room for.
+- `src/trap.c` decodes EC, IL and ISS from table lookups named after the Arm ARM, prints `FAR_EL3` and the DFSC for aborts only, and dumps all 31 registers four per line.
+- The handler recovers from an armed, expected fault by advancing `ELR_EL3` past the faulting instruction; anything unexpected is reported and parked.
+- `selftest_brk` executes `brk #0`, which exercises the whole path at once: table installed, frame saved and restored, syndrome decoded, execution resumed.
+- Gate: four new `CHECKS` lines, run by the PR's CI matrix.
+- Learning: `kprintf` has no `-` flag, so a `%-2u` in the register dump would have printed literally as text rather than aligning. Caught by reading the parser in `kprintf.c` rather than by any tool, which is an argument for the planned host unit tests of its formatting.
+- Learning: the host compile gate added last batch paid for itself immediately. It caught the C side of this batch, including the frame-layout asserts, before anything reached CI.
 
 ### Batch 4 (2026-10-06): host compile gate
 
