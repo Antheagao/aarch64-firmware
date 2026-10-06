@@ -1,0 +1,19 @@
+# Style for src/ and include/, encoding docs/CODING_STANDARDS.md "Formatting".
+# Pinned to the options clang-format 18 supports, because CI runs the
+# clang-format-18 that Ubuntu 24.04 ships.
+BasedOnStyle: LLVM
+IndentWidth: 4
+ColumnLimit: 100
+# "Braces on the same line except for function definitions."
+BreakBeforeBraces: Linux
+AllowShortFunctionsOnASingleLine: None
+AlignConsecutiveMacros: Consecutive
+AlignTrailingComments:
+  Kind: Always
+  OverEmptyLines: 0
+# Keep the freestanding-headers block separate from the project headers.
+IncludeBlocks: Preserve
+# Park the line continuations just past the longest line instead of at
+# column 100. Firmware carries multi-line register and asm macros, and
+# right-aligned backslashes bury them in whitespace.
+AlignEscapedNewlines: Left
