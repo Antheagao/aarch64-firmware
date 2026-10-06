@@ -44,7 +44,13 @@ ASFLAGS := -g -Iinclude -MMD -MP
 LDFLAGS := -nostdlib -static -T linker.ld
 
 SRCS := $(wildcard src/*.c src/*.S)
-KERNEL_SRCS := kernel/start.S kernel/main.c src/uart.c src/kprintf.c src/semihost.c
+KERNEL_SRCS := kernel/start.S kernel/main.c src/uart.c src/kprintf.c src/semihost.c src/vectors.S src/trap.c
+
+# src/vectors.S and src/trap.c are built into both images. TRAP_EL picks the
+# banked syndrome registers and the level the crash report names, so one
+# crash reporter serves both rather than two copies drifting apart.
+FW_DEFS     := -DTRAP_EL=3
+KERNEL_DEFS := -DTRAP_EL=1
 OBJS := $(patsubst src/%,$(BUILD)/%.o,$(SRCS))
 
 QEMU      ?= qemu-system-aarch64
@@ -69,11 +75,11 @@ $(ELF): $(OBJS) linker.ld
 
 $(BUILD)/%.c.o: src/%.c
 	@mkdir -p $(@D)
-	$(CC) $(CFLAGS) -c $< -o $@
+	$(CC) $(CFLAGS) $(FW_DEFS) -c $< -o $@
 
 $(BUILD)/%.S.o: src/%.S
 	@mkdir -p $(@D)
-	$(CC) $(ASFLAGS) -c $< -o $@
+	$(CC) $(ASFLAGS) $(FW_DEFS) -c $< -o $@
 
 # The EL1 image: a second link of the same compiler flags against its own
 # linker script, so it lands at DRAM_BASE instead of flash. Its objects go
@@ -83,11 +89,11 @@ KERNEL_OBJS := $(addprefix $(BUILD)/kernel/,$(addsuffix .o,$(KERNEL_SRCS)))
 
 $(BUILD)/kernel/%.c.o: %.c
 	@mkdir -p $(@D)
-	$(CC) $(CFLAGS) -c $< -o $@
+	$(CC) $(CFLAGS) $(KERNEL_DEFS) -c $< -o $@
 
 $(BUILD)/kernel/%.S.o: %.S
 	@mkdir -p $(@D)
-	$(CC) $(ASFLAGS) -c $< -o $@
+	$(CC) $(ASFLAGS) $(KERNEL_DEFS) -c $< -o $@
 
 $(BUILD)/kernel.elf: $(KERNEL_OBJS) kernel/kernel.ld
 	$(LD) -nostdlib -static -T kernel/kernel.ld -o $@ $(KERNEL_OBJS)
@@ -130,7 +136,7 @@ format-check:
 # all. Target-specific flags (-mstrict-align, -mgeneral-regs-only) are
 # deliberately absent: they are not valid for the host.
 HOST_CC ?= cc
-HOST_CFLAGS := -fsyntax-only -std=gnu11 -Wall -Wextra -Werror -ffreestanding -Iinclude
+HOST_CFLAGS := -fsyntax-only -std=gnu11 -Wall -Wextra -Werror -ffreestanding -Iinclude -DTRAP_EL=3
 
 syntax-check:
 	@for f in $(wildcard src/*.c kernel/*.c); do 		echo "  SYNTAX  $$f"; 		$(HOST_CC) $(HOST_CFLAGS) $$f || exit 1; 	done
@@ -142,7 +148,7 @@ syntax-check:
 # so the code under test is the code that ships.
 UNIT_BIN    := $(BUILD)/unit
 UNIT_SRCS   := src/kprintf.c src/cpuid.c tests/unit/fake_uart.c tests/unit/unit.c tests/unit/main.c tests/unit/test_kprintf.c tests/unit/test_cpuid.c
-UNIT_CFLAGS := -std=gnu11 -g -O1 -Wall -Wextra -Werror -Iinclude -Itests/unit                -fsanitize=address,undefined -fno-sanitize-recover=all
+UNIT_CFLAGS := -std=gnu11 -g -O1 -Wall -Wextra -Werror -Iinclude -Itests/unit -DTRAP_EL=3                -fsanitize=address,undefined -fno-sanitize-recover=all
 
 unit: $(UNIT_BIN)
 	$(UNIT_BIN)

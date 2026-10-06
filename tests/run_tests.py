@@ -32,7 +32,7 @@ CHECKS = [
     ("bounded poll returns on a clear bit", r"selftest: poll returns at once on a clear bit: ok"),
     ("brk #0 traps to EL3 and decodes as BRK",
      r"selftest: brk #0 trapped: EC=0x3c: ok"),
-    ("the trap report names the exception class", r"EC=0x3c \(BRK instruction\)"),
+    ("the trap report names the exception class", r"trap: EL3 .*EC=0x3c \(BRK instruction\)"),
     ("the trap report dumps the saved registers", r"trap:   x 0=0x[0-9a-f]{16}"),
     ("the handler steps over an expected fault", r"trap: expected, stepping over it"),
     ("an unaligned load traps as a same-EL data abort",
@@ -47,6 +47,12 @@ CHECKS = [
     ("EL3 reports the security state it configured, which only EL3 can know",
      r"el3: entering EL1 \(Non-secure\) at 0x0000000040000000"),
     ("the EL1 image runs at EL1 after the eret", r"kernel: running at EL1"),
+    ("EL1 installs its own vector table in VBAR_EL1",
+     r"kernel: vector table installed: ok"),
+    ("a fault at EL1 is reported by EL1, not escalated to EL3",
+     r"trap: EL1 vector=4 \(sync_cur_spx\) EC=0x3c"),
+    ("EL1 recovers from its own fault and keeps running",
+     r"kernel: brk #0 trapped at EL1: EC=0x3c: ok"),
 ]
 
 

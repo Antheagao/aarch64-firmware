@@ -1,6 +1,7 @@
 /*
- * The EL3 trap frame: the register state src/vectors.S pushes on an
- * exception, and the view src/trap.c decodes it through.
+ * The trap frame: the register state src/vectors.S pushes on an exception,
+ * and the view src/trap.c decodes it through. The layout is the same at
+ * every exception level, so both images share this header.
  *
  * The byte offsets below are what the assembly uses. The C struct below
  * must agree with them exactly, and the _Static_asserts make a mismatch a
@@ -43,8 +44,9 @@ _Static_assert(offsetof(struct trap_frame, esr) == TF_ESR, "TF_ESR must match ve
 _Static_assert(offsetof(struct trap_frame, far) == TF_FAR, "TF_FAR must match vectors.S");
 _Static_assert(offsetof(struct trap_frame, vector) == TF_VECTOR, "TF_VECTOR must match vectors.S");
 
-/* Called from src/vectors.S with the frame it just pushed. */
-void el3_trap(struct trap_frame *tf);
+/* Called from src/vectors.S with the frame it just pushed. One copy is
+ * built into each image; TRAP_EL says which exception level it serves. */
+void trap_handler(struct trap_frame *tf);
 
 /* Arm the handler to recover from the next exception instead of parking:
  * the deliberate faults in the self-tests are the only expected ones. */

@@ -1,5 +1,5 @@
 /*
- * EL3 exception vector table and the save/restore around the C handler.
+ * Exception vector table and the save/restore around the C handler.
  *
  * Arm ARM (DDI 0487), "Exception vectors": VBAR_EL3 points at a 2 KiB-aligned
  * table of 16 entries of 0x80 bytes each, in four groups of four:
@@ -21,6 +21,26 @@
 
 #include "trapframe.h"
 
+/*
+ * This file is assembled twice, once into each image: TRAP_EL=3 for the
+ * firmware and TRAP_EL=1 for the EL1 kernel. The two tables differ only in
+ * which banked syndrome registers they read, so parameterising beats keeping
+ * a second copy that drifts from this one.
+ */
+#if TRAP_EL == 3
+#define ELR_REG      elr_el3
+#define SPSR_REG     spsr_el3
+#define ESR_REG      esr_el3
+#define FAR_REG      far_el3
+#elif TRAP_EL == 1
+#define ELR_REG      elr_el1
+#define SPSR_REG     spsr_el1
+#define ESR_REG      esr_el1
+#define FAR_REG      far_el1
+#else
+#error "TRAP_EL must be 1 or 3"
+#endif
+
     .section .text.vectors, "ax"
 
     .macro vector_entry index, name
@@ -29,7 +49,7 @@
     sub     sp, sp, #TF_SIZE
     stp     x0, x1, [sp, #TF_X0]        // free two registers to work with
     mov     x0, #\index
-    b       el3_trap_common
+    b       trap_common
     .endm
 
     .balign 0x800
@@ -61,7 +81,7 @@ vectors:
 
     /* Past the end of the 2 KiB table, so this is never a vector target. */
     .balign 0x80
-el3_trap_common:
+trap_common:
     /* x0 holds the vector index and x1 is free; both originals are already
      * in the frame. Save the rest before using any of them as scratch. */
     stp     x2, x3,   [sp, #16 * 1]
@@ -83,21 +103,21 @@ el3_trap_common:
 
     /* The syndrome registers say why we are here, and are read before any
      * C runs so nothing can disturb them. */
-    mrs     x1, elr_el3
-    mrs     x2, spsr_el3
+    mrs     x1, ELR_REG
+    mrs     x2, SPSR_REG
     stp     x1, x2,   [sp, #TF_ELR]
-    mrs     x1, esr_el3
-    mrs     x2, far_el3
+    mrs     x1, ESR_REG
+    mrs     x2, FAR_REG
     stp     x1, x2,   [sp, #TF_ESR]
 
     mov     x0, sp                      // the frame is the handler's argument
-    bl      el3_trap
+    bl      trap_handler
 
     /* Restore ELR and SPSR first, while x1 and x2 are still scratch: the
      * handler may have advanced ELR to step over a faulting instruction. */
     ldp     x1, x2,   [sp, #TF_ELR]
-    msr     elr_el3, x1
-    msr     spsr_el3, x2
+    msr     ELR_REG, x1
+    msr     SPSR_REG, x2
 
     ldp     x0, x1,   [sp, #16 * 0]
     ldp     x2, x3,   [sp, #16 * 1]

@@ -1,5 +1,12 @@
-/* EL3 exception reporting. The point of this file is that a crash is
- * readable: which vector fired, why, where, and with what register state. */
+/* Exception reporting. The point of this file is that a crash is readable:
+ * which vector fired, why, where, and with what register state.
+ *
+ * Built into both images, with TRAP_EL saying which exception level this
+ * copy serves. The decode is identical either side; only the level printed
+ * and the banked registers read (in src/vectors.S) differ. */
+#ifndef TRAP_EL
+#error "TRAP_EL must be defined as 1 or 3"
+#endif
 #include <stdbool.h>
 #include <stdint.h>
 
@@ -83,8 +90,12 @@ static void report(const struct trap_frame *tf)
     uint32_t ec = ESR_EC(tf->esr);
     uint32_t iss = ESR_ISS(tf->esr);
 
-    kprintf("trap: vector=%u (%s) EC=0x%02x (%s) IL=%u ISS=0x%07x\n", (unsigned)tf->vector,
-            VECTOR_NAMES[tf->vector & 0xf], ec, LOOKUP(EC_NAMES, ec), ESR_IL(tf->esr), iss);
+    /* The level is printed because both images report through this code: a
+     * fault at EL1 reported by EL3 means it went to the wrong level, which
+     * is a real failure rather than a cosmetic one. */
+    kprintf("trap: EL%u vector=%u (%s) EC=0x%02x (%s) IL=%u ISS=0x%07x\n", TRAP_EL,
+            (unsigned)tf->vector, VECTOR_NAMES[tf->vector & 0xf], ec, LOOKUP(EC_NAMES, ec),
+            ESR_IL(tf->esr), iss);
     kprintf("trap:   ESR=0x%016lx ELR=0x%016lx SPSR=0x%016lx\n", tf->esr, tf->elr, tf->spsr);
 
     /* FAR only means anything for aborts, so it is not printed otherwise:
@@ -102,7 +113,7 @@ static void report(const struct trap_frame *tf)
     }
 }
 
-void el3_trap(struct trap_frame *tf)
+void trap_handler(struct trap_frame *tf)
 {
     report(tf);
 
