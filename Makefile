@@ -7,6 +7,7 @@
 #   make test       boot and assert on the UART output (what CI runs)
 #   make format     reformat C sources and headers with clang-format
 #   make format-check  fail if any C source or header is misformatted
+#   make syntax-check  compile-check the C sources with the host compiler
 #   make LLVM=1     build with clang + lld instead of GCC + binutils
 #   make CPU=cortex-a57 run   try a different core (default: max, i.e. Armv9 features)
 
@@ -52,7 +53,7 @@ MACHINE   := virt,secure=on,virtualization=on,gic-version=3
 QEMUFLAGS := -M $(MACHINE) -cpu $(CPU) -smp $(SMP) -m 512M -nographic \
              -bios $(BIN) -semihosting-config enable=on,target=native
 
-.PHONY: all run debug gdb test format format-check qemu-cmd disasm clean
+.PHONY: all run debug gdb test format format-check syntax-check qemu-cmd disasm clean
 
 all: $(BIN)
 
@@ -93,6 +94,18 @@ format:
 
 format-check:
 	$(CLANG_FORMAT) --dry-run --Werror $(FORMAT_SRCS)
+
+# Host syntax check. Catches C errors without a cross toolchain, so a typo is
+# caught in seconds instead of waiting for a CI build. -fsyntax-only stops
+# before assembly, so the AArch64 inline asm in sysreg.h is parsed as a string
+# and never assembled; that is what lets a host compiler check this code at
+# all. Target-specific flags (-mstrict-align, -mgeneral-regs-only) are
+# deliberately absent: they are not valid for the host.
+HOST_CC ?= cc
+HOST_CFLAGS := -fsyntax-only -std=gnu11 -Wall -Wextra -Werror -ffreestanding -Iinclude
+
+syntax-check:
+	@for f in $(wildcard src/*.c); do 		echo "  SYNTAX  $$f"; 		$(HOST_CC) $(HOST_CFLAGS) $$f || exit 1; 	done
 
 # Used by the test harness so it can run (and kill) QEMU directly.
 qemu-cmd:
