@@ -18,6 +18,11 @@ Sections marked **(planned)** describe test layers that do not exist yet.
 
 - `-Wall -Wextra -Werror` on every file.
 - Two compilers: GCC and clang, because each catches undefined behavior the other misses.
+- `make syntax-check` compiles the C sources with the *host* compiler and `-fsyntax-only`.
+  It needs no cross toolchain and no QEMU, so an ordinary C error is caught in seconds rather than waiting on the boot matrix, and it runs on a machine that cannot build the firmware at all.
+  `-fsyntax-only` stops before assembly, which is what lets a host compiler accept the AArch64 inline asm in `include/sysreg.h`.
+  It checks syntax and semantics only: it proves nothing about what the firmware does, so it adds to the QEMU checks rather than replacing any of them.
+- `make format-check` enforces `.clang-format`, pinned to clang-format 18.
 - **(planned)** Static analysis with `clang-tidy` and `cppcheck` as a CI job.
 
 ### 2. Host unit tests (planned)

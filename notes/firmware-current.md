@@ -1,7 +1,7 @@
 # Firmware campaign: current queue
 
 **Last updated:** 2026-10-05.
-Batch 3 put the EL3 control registers into a known reset state and installed the vector table in `VBAR_EL3` on branch `feat/m1-el3-reset-state`.
+Batch 4 added `make syntax-check`, a host compile gate, on branch `build/host-syntax-check`.
 Next batch: row 1, save a trap frame and decode `ESR_EL3` so a crash prints EC, IL, ISS and a register dump (M1, part 2).
 
 This file is the work queue for the `campaign-loop` skill in `.claude/skills/campaign-loop/SKILL.md`.
@@ -23,10 +23,9 @@ Parked rows and their unblock conditions are in `notes/firmware-future.md`, and 
 |---|---|---|---|
 | 1 | `feat(el3)`: trap frame and ESR decode (M1, part 2) | Save x0-x30, `ELR_EL3`, `SPSR_EL3`; decode EC, IL, ISS, DFSC; print `FAR_EL3` and a register dump | `brk #0` self-test reports `EC=0x3c` and boot continues |
 | 2 | `test(el3)`: alignment fault self-test (M1, part 3) | Unaligned load recovered by advancing `ELR_EL3` | Check `EC=0x25 DFSC=0x21`; M1 marked done in `docs/ROADMAP.md`; tag `v0.1.0` |
-| 3 | `build`: host syntax-check target | `make syntax-check` runs `gcc -fsyntax-only -Wall -Wextra -Werror` over `src/*.c` on the host, so C errors are caught without a cross toolchain | New CI job, and the target fails on a deliberately broken string literal |
-| 4 | `test`: host unit test scaffolding | `tests/unit/` runner, `make unit`, built with ASan and UBSan; first tests cover `kprintf` formatting | `make unit` passes locally and in a new CI job |
-| 5 | `feat(cpu)`: table-driven ID register decoder (M2) | Decode the ID registers listed in the roadmap into a printed feature table | Checks: SVE2, PAC, BTI, MTE present on `max` and absent on `cortex-a57`; tag `v0.2.0` |
-| 6 | [USER-GATED] Turn on "Automatically delete head branches" in the GitHub repo settings | The Claude session cannot delete remote branches, so merged branches stay until the owner deletes them | Merged branches disappear after merge |
+| 3 | `test`: host unit test scaffolding | `tests/unit/` runner, `make unit`, built with ASan and UBSan; first tests cover `kprintf` formatting | `make unit` passes locally and in a new CI job |
+| 4 | `feat(cpu)`: table-driven ID register decoder (M2) | Decode the ID registers listed in the roadmap into a printed feature table | Checks: SVE2, PAC, BTI, MTE present on `max` and absent on `cortex-a57`; tag `v0.2.0` |
+| 5 | [USER-GATED] Turn on "Automatically delete head branches" in the GitHub repo settings | The Claude session cannot delete remote branches, so merged branches stay until the owner deletes them | Merged branches disappear after merge |
 
 ## Next batch plan (row 1)
 
@@ -43,6 +42,14 @@ Parked rows and their unblock conditions are in `notes/firmware-future.md`, and 
 - Gate: a `CHECKS` line matching `EC=0x3c` and the existing `milestone 0: boot OK` line still printing afterwards, proving the handler returned rather than hung, plus the full `make test` matrix.
 
 ## Batch log
+
+### Batch 4 (2026-10-06): host compile gate
+
+- `make syntax-check` compiles every `src/*.c` with the host compiler and `-fsyntax-only`, plus a CI job that runs it. `-fsyntax-only` stops before assembly, so the AArch64 inline asm in `sysreg.h` is parsed as a string and a host compiler can check this code at all. Target-only flags are deliberately absent, since they are not valid for the host.
+- Promoted ahead of the trap frame deliberately: batch 3 lost a full CI cycle to a plain C error, and this gate catches that class in seconds on a machine that cannot build the firmware. Recorded here because reordering a queue without saying why is how a queue stops being trustworthy.
+- `docs/TESTING.md` gains the layer, with the limit stated: it checks syntax and semantics only and proves nothing about behavior, so it adds to the QEMU checks rather than replacing any.
+- Gate: verified the target actually fails, which is the whole point of adding it. A file with a bad return statement and a file with an unterminated string literal each made `make syntax-check` exit 2; with both removed it exits 0.
+- Learning: the first attempt at that negative test reported a false pass. The script meant to corrupt a string literal never matched its target, so it checked a healthy tree and `exit=0` looked like a broken gate. A negative test that does not first prove it changed something is not a test. The same shape of bug as the `run_tests.sh` that always printed success, which batch 1 replaced.
 
 ### Batch 3 (2026-10-05): EL3 known reset state and vector table
 
