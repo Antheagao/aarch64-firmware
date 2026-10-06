@@ -2,9 +2,11 @@
 #include <stdint.h>
 
 #include "cpuid.h"
+#include "handoff.h"
 #include "kprintf.h"
 #include "loader.h"
 #include "mmio.h"
+#include "platform.h"
 #include "semihost.h"
 #include "sysreg.h"
 #include "sysreg_bits.h"
@@ -104,15 +106,17 @@ void fw_main(void)
     selftest_brk();
     selftest_unaligned();
 
-    kernel_load();
-
     struct cpu_id id;
     cpuid_read(&id);
     cpuid_print(&id);
 
-    /* Milestones 1-8 in docs/ROADMAP.md grow from here. */
+    if (!kernel_load())
+        semihost_exit(1);
 
     kprintf("uart: tx timeouts = %u\n", uart_tx_timeouts());
     kprintf("milestone 0: boot OK\n");
-    semihost_exit(0);
+
+    /* One-way. Everything that has to be said from EL3 has been said, and
+     * the EL1 image ends the run through semihosting. */
+    el3_enter_el1(DRAM_BASE, &id);
 }

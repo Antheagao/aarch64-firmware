@@ -1,8 +1,8 @@
 # Firmware campaign: current queue
 
 **Last updated:** 2026-10-05.
-Batch 10 embedded the EL1 image and copied it to DRAM on branch `feat/m3-el1-image`.
-Next batch: row 1, configure `SCR_EL3`, `HCR_EL2` and `SPSR_EL3` and `eret` down to EL1.
+Batch 11 dropped to EL1 on branch `feat/m3-drop-to-el1`: the firmware now erets into the loaded image and the EL1 kernel ends the run.
+Next batch: row 1, give EL1 its own vector table and crash reporter behind `VBAR_EL1`.
 
 This file is the work queue for the `campaign-loop` skill in `.claude/skills/campaign-loop/SKILL.md`.
 Milestone specs live in `docs/ROADMAP.md`; this file only tracks order and state.
@@ -21,26 +21,32 @@ Parked rows and their unblock conditions are in `notes/firmware-future.md`, and 
 
 | # | Row | Scope | Gate |
 |---|---|---|---|
-| 1 | `feat(el3)`: drop to EL1 | `SCR_EL3` (NS, RW), `HCR_EL2.RW`, reset state for `SCTLR_EL1`, `SPSR_EL3` = EL1h with interrupts masked, entry in `ELR_EL3`, then `eret` | Check `kernel: running at EL1 (Non-secure)` |
-| 2 | `feat(el1)`: EL1 vector table and crash reporter | Reuse the M1 trap frame and decode behind `VBAR_EL1`; a deliberate fault at EL1 is reported by EL1, not EL3 | Check an EL1 trap report, and that the boot continues |
-| 3 | `feat(el3)`: handle `smc #0` from EL1 | EL3 synchronous handler for the lower-EL AArch64 vector, decoding `EC=0x17` | Check an EL3 trap report with `EC=0x17`; tag `v0.3.0` |
-| 4 | `docs`: `el-handoff.md` and `riscv-vs-arm.md` | Every bit set in `SCR_EL3`, `HCR_EL2` and `SPSR_EL3` and why; then map the same ideas onto RISC-V from the xv6-riscv work | Both files exist and the roadmap links them |
-| 5 | `ci`: `clang-tidy` and `cppcheck` job | Static analysis over `src/` and `include/`, with the checks that fire on this code either fixed or explicitly disabled with a reason | New CI job passes, and a deliberately introduced defect makes it fail |
-| 6 | [USER-GATED] Turn on "Automatically delete head branches" in the GitHub repo settings | The Claude session cannot delete remote branches, so merged branches stay until the owner deletes them | Merged branches disappear after merge |
+| 1 | `feat(el1)`: EL1 vector table and crash reporter | Reuse the M1 trap frame and decode behind `VBAR_EL1`; a deliberate fault at EL1 is reported by EL1, not EL3 | Check an EL1 trap report, and that the boot continues |
+| 2 | `feat(el3)`: handle `smc #0` from EL1 | EL3 synchronous handler for the lower-EL AArch64 vector, decoding `EC=0x17` | Check an EL3 trap report with `EC=0x17`; tag `v0.3.0` |
+| 3 | `docs`: `el-handoff.md` and `riscv-vs-arm.md` | Every bit set in `SCR_EL3`, `HCR_EL2` and `SPSR_EL3` and why; then map the same ideas onto RISC-V from the xv6-riscv work | Both files exist and the roadmap links them |
+| 4 | `ci`: `clang-tidy` and `cppcheck` job | Static analysis over `src/` and `include/`, with the checks that fire on this code either fixed or explicitly disabled with a reason | New CI job passes, and a deliberately introduced defect makes it fail |
+| 5 | [USER-GATED] Turn on "Automatically delete head branches" in the GitHub repo settings | The Claude session cannot delete remote branches, so merged branches stay until the owner deletes them | Merged branches disappear after merge |
 
 ## Next batch plan (row 1)
 
-- Branch: `feat/m3-drop-to-el1`.
-- Configure the state EL1 inherits, then `eret` to `DRAM_BASE`. The image is already there and verified, so a failure in this row is a configuration bug, not a load bug.
-- `SCR_EL3`: set `NS` so the lower ELs are Non-secure, keep `RW` set. Note that flipping `NS` changes which banked registers the firmware sees, so set it last, immediately before the `eret`.
-- `SPSR_EL3` = EL1h (`M[3:0]` = 0b0101) with D, A, I and F masked, so EL1 starts with interrupts off and its own SP.
-- `ELR_EL3` = `DRAM_BASE`.
-- `HCR_EL2.RW` must say EL1 is AArch64. EL2 is implemented on this machine even though the firmware skips it, and its controls still apply to Non-secure EL1: finding that out is part of the exercise, so expect the first attempt to need it.
-- Give `SCTLR_EL1` a known reset value too, the same argument as the `SCTLR_EL3` row: its bits are UNKNOWN out of reset. MMU and caches stay off.
-- The kernel calls `uart_init()` itself, so the UART keeps working across the hand-off without any extra plumbing.
-- Gate: a check for `kernel: running at EL1`, and that the firmware's own earlier checks still pass, since the `eret` is one-way and anything printed after it comes from EL1.
+- Branch: `feat/m3-el1-vectors`.
+- Give EL1 its own vectors. The M1 work is reusable but not shareable as it stands: `src/vectors.S` reads `ELR_EL3`, `ESR_EL3` and `FAR_EL3` by name, and `src/trap.c` prints them as EL3's. Decide deliberately between parameterising the existing files and giving the EL1 image its own copy, and record which and why, because "most of the M1 code should be reusable" is the kind of claim that quietly becomes a copy-paste.
+- The EL1 image is a separate link, so whatever is shared has to work in both: `include/trapframe.h` already holds the layout, and the offsets are exception-level agnostic.
+- Install the table with `VBAR_EL1` and take a deliberate fault at EL1, the `brk #0` pattern from M1.
+- The point of the row is that the fault is reported *by EL1*. If it is reported by EL3 instead, the trap went to the wrong level, which is a real failure and not a cosmetic one.
+- Gate: a check for an EL1 trap report with `EC=0x3c`, that the EL1 image continues afterwards and still exits 0, and that no EL3 trap report appears for it.
 
 ## Batch log
+
+### Batch 11 (2026-10-06): drop to EL1
+
+- `src/handoff.c` configures the state EL1 inherits and erets into the image batch 10 loaded. `src/boot.S` gained `el3_eret_to`, because `eret` has no C spelling.
+- The ordering was the real content, and the pre-seeded plan for this row had it backwards. It said to set `SCR_EL3.NS` last. With `FEAT_SEL2`, which `-cpu max` implements, `HCR_EL2` and `SCTLR_EL1` are banked by security state and `SCR_EL3.NS` selects the bank EL3 sees, so NS has to be set *first*: writing those registers before flipping NS configures the Secure copies and leaves the Non-secure ones UNKNOWN. The corrected reasoning is in the file, the roadmap and this log, because the failure it causes would be silent.
+- `HCR_EL2.RW` is written only when `ID_AA64PFR0_EL1.EL2` says EL2 exists, using the M2 decoder. Writing it on a CPU without EL2 is not architecturally valid, and the check costs one branch.
+- `SPSR_EL3` is EL1h with all four DAIF bits masked, so the kernel starts with interrupts off and chooses when to take them. `SCTLR_EL1` gets the same known-reset treatment as `SCTLR_EL3`, with the MMU and caches off and alignment checking on.
+- The eret is one-way, so the run can no longer end at EL3: the EL1 image now calls `semihost_exit(0)` and `src/semihost.c` joins the EL1 link. Without that the harness would hang and fail on its 30 second timeout rather than on anything real.
+- The security state is reported by EL3, not by the kernel. EL1 cannot read `SCR_EL3`, so a kernel printing "Non-secure" would be repeating what it was told rather than observing anything.
+- Verified the constants before pushing: `SCTLR_EL1_RES1` computes to 0x30D00800, matching TF-A, and the `SPSR_EL3` value to 0x3C5.
 
 ### Batch 10 (2026-10-06): embed and load the EL1 image
 

@@ -79,3 +79,11 @@ _start:
 park:
     wfe
     b       park
+
+/* void el3_eret_to(uint64_t entry) -- enter the exception level that
+ * SPSR_EL3 already describes, at the address in x0. eret has no C spelling,
+ * and the caller has set every other register this depends on. */
+    .global el3_eret_to
+el3_eret_to:
+    msr     elr_el3, x0
+    eret
