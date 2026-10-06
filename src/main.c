@@ -21,10 +21,9 @@ static void selftest_poll_timeout(void)
     bool timed_out = !mmio_poll_clear32((uintptr_t)&stuck, 1, SELFTEST_POLL_SPINS);
     bool cleared = mmio_poll_clear32((uintptr_t)&clear, 1, SELFTEST_POLL_SPINS);
 
-    kprintf("selftest: poll gives up on a stuck bit after %u spins: %s\n",
-            SELFTEST_POLL_SPINS, timed_out ? "ok" : "FAIL");
-    kprintf("selftest: poll returns at once on a clear bit: %s\n",
-            cleared ? "ok" : "FAIL");
+    kprintf("selftest: poll gives up on a stuck bit after %u spins: %s\n", SELFTEST_POLL_SPINS,
+            timed_out ? "ok" : "FAIL");
+    kprintf("selftest: poll returns at once on a clear bit: %s\n", cleared ? "ok" : "FAIL");
 }
 
 /* First C code after reset; boot.S calls it on the primary CPU only. */

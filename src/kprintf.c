@@ -6,7 +6,7 @@
 
 static void put_uint(uint64_t val, unsigned base, int width, char pad)
 {
-    char buf[20];   /* UINT64_MAX is 20 decimal digits */
+    char buf[20]; /* UINT64_MAX is 20 decimal digits */
     int n = 0;
 
     do {
@@ -44,7 +44,7 @@ void kprintf(const char *fmt, ...)
         }
         while (*fmt >= '0' && *fmt <= '9')
             width = width * 10 + (*fmt++ - '0');
-        while (*fmt == 'l') {   /* l and ll are both 64-bit on AArch64 */
+        while (*fmt == 'l') { /* l and ll are both 64-bit on AArch64 */
             is_long = 1;
             fmt++;
         }
@@ -69,12 +69,10 @@ void kprintf(const char *fmt, ...)
             break;
         }
         case 'u':
-            put_uint(is_long ? va_arg(ap, unsigned long) : va_arg(ap, unsigned),
-                     10, width, pad);
+            put_uint(is_long ? va_arg(ap, unsigned long) : va_arg(ap, unsigned), 10, width, pad);
             break;
         case 'x':
-            put_uint(is_long ? va_arg(ap, unsigned long) : va_arg(ap, unsigned),
-                     16, width, pad);
+            put_uint(is_long ? va_arg(ap, unsigned long) : va_arg(ap, unsigned), 16, width, pad);
             break;
         case 'p':
             uart_puts("0x");
