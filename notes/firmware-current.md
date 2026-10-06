@@ -1,8 +1,8 @@
 # Firmware campaign: current queue
 
 **Last updated:** 2026-10-05.
-Batch 16 refilled the queue: `v0.3.0` unblocked M4, so M4 is split into PR-sized rows below.
-Next batch: row 1, the page table builder, which is pure logic and so gets host unit tests before any of it runs on the target.
+Batch 17 added the translation table builder on branch `feat/m4-page-tables`, with 33 host unit tests and nothing yet programmed into the MMU.
+Next batch: row 1, program `MAIR_EL1`, `TCR_EL1` and `TTBR0_EL1` and turn the MMU on at EL1.
 
 This file is the work queue for the `campaign-loop` skill in `.claude/skills/campaign-loop/SKILL.md`.
 Milestone specs live in `docs/ROADMAP.md`; this file only tracks order and state.
@@ -21,24 +21,34 @@ Parked rows and their unblock conditions are in `notes/firmware-future.md`, and 
 
 | # | Row | Scope | Gate |
 |---|---|---|---|
-| 1 | `feat(mmu)`: page table builder | Build an identity map with a 4 KiB granule and a 39-bit VA, using the largest block that fits (1 GiB, then 2 MiB, then 4 KiB) out of a static bump-allocated pool of tables. Pure logic, no register writes | Host unit tests: the right level and block size per range, pool exhaustion reported rather than overrunning, and attributes landing in the right descriptor bits |
-| 2 | `feat(mmu)`: turn the MMU on at EL1 | Program `MAIR_EL1` (attr0 Normal write-back `0xff`, attr1 Device-nGnRnE `0x00`), `TCR_EL1` (T0SZ, IRGN/ORGN, SH, TG0, IPS) and `TTBR0_EL1`, then set `SCTLR_EL1.M/C/I` with the `dsb`/`isb`/`tlbi` sequence the Arm ARM requires | Check EL1 still reaches its exit with the MMU on; the barriers are the risk, so a hang here is the expected failure mode |
-| 3 | `feat(mmu)`: per-section permissions | `.text` RX, `.rodata` R, `.data`/`.bss`/stack RW and XN, UART and GIC as Device. Align the EL1 linker sections to page boundaries so the permissions can differ | Check the printed map matches the linker symbols |
-| 4 | `test(mmu)`: permission and execute-never self-tests | Write to `.rodata` and jump into `.data`, recovering from each | Check `EC=0x25 DFSC=0x0f` (permission fault, level 3) and `EC=0x21` (instruction abort); M4 marked done; tag `v0.4.0` |
-| 5 | `build`: drop `-mstrict-align` for the EL1 image | Only once EL1 runs on Normal memory, and only for that image: the firmware keeps it while the MMU is off at EL3 | The matrix still passes with the flag removed from the EL1 build alone |
-| 6 | [USER-GATED] Turn on "Automatically delete head branches" in the GitHub repo settings | The Claude session cannot delete remote branches, so merged branches stay until the owner deletes them | Merged branches disappear after merge |
+| 1 | `feat(mmu)`: turn the MMU on at EL1 | Program `MAIR_EL1` (attr0 Normal write-back `0xff`, attr1 Device-nGnRnE `0x00`), `TCR_EL1` (T0SZ, IRGN/ORGN, SH, TG0, IPS) and `TTBR0_EL1`, then set `SCTLR_EL1.M/C/I` with the `dsb`/`isb`/`tlbi` sequence the Arm ARM requires | Check EL1 still reaches its exit with the MMU on; the barriers are the risk, so a hang here is the expected failure mode |
+| 2 | `feat(mmu)`: per-section permissions | `.text` RX, `.rodata` R, `.data`/`.bss`/stack RW and XN, UART and GIC as Device. Align the EL1 linker sections to page boundaries so the permissions can differ | Check the printed map matches the linker symbols |
+| 3 | `test(mmu)`: permission and execute-never self-tests | Write to `.rodata` and jump into `.data`, recovering from each | Check `EC=0x25 DFSC=0x0f` (permission fault, level 3) and `EC=0x21` (instruction abort); M4 marked done; tag `v0.4.0` |
+| 4 | `build`: drop `-mstrict-align` for the EL1 image | Only once EL1 runs on Normal memory, and only for that image: the firmware keeps it while the MMU is off at EL3 | The matrix still passes with the flag removed from the EL1 build alone |
+| 5 | [USER-GATED] Turn on "Automatically delete head branches" in the GitHub repo settings | The Claude session cannot delete remote branches, so merged branches stay until the owner deletes them | Merged branches disappear after merge |
 
 ## Next batch plan (row 1)
 
-- Branch: `feat/m4-page-tables`.
-- Keep the builder pure: it takes a description of the regions and fills a caller-provided pool, writing no system registers. That is what makes it unit-testable on the host, and the host tests are the point of doing it first, because a wrong descriptor bit shows up on the target as a hang with nothing to read.
-- Represent a region as `{virtual base, size, memory type, permissions}` and let the builder choose the level. The rule from `docs/CODING_STANDARDS.md` is the largest block that fits: a 1 GiB block at level 1, a 2 MiB block at level 2, otherwise 4 KiB pages at level 3.
-- The pool is a static array of 4 KiB tables handed out by a bump pointer, so the worst case is known at link time and there is no heap. Exhausting it must return an error the caller can print, not run off the end.
-- Descriptor bits to get right, all from the Arm ARM under "Armv8 translation table level 3 descriptor formats": valid and table/block bits [1:0], the attribute index `AttrIndx` [4:2], `AP` [7:6], `SH` [9:8], the access flag `AF` [10], and `UXN`/`PXN` [54:53].
-- The access flag is the classic omission: a descriptor with `AF` clear faults on first use even though every other bit is right.
-- Gate: host unit tests only. Nothing is programmed into the MMU this row, so nothing can hang.
+- Branch: `feat/m4-mmu-on`.
+- The builder exists and is tested, so this row is the register programming and the barriers, which is where a mistake becomes a hang rather than a message.
+- `MAIR_EL1`: attr0 = `0xff` (Normal, inner and outer write-back non-transient), attr1 = `0x00` (Device-nGnRnE). The descriptors already carry those indices, so the two files have to agree and `include/pagetable.h` is where the agreement is written down.
+- `TCR_EL1`: `T0SZ` = 25 for a 39-bit VA, `TG0` = 4 KiB, `IRGN0`/`ORGN0` write-back write-allocate, `SH0` inner shareable, `IPS` from `ID_AA64MMFR0_EL1.PARange`, which the M2 decoder already reads. Do not hardcode `IPS`: it is the one field that depends on the CPU.
+- `TTBR0_EL1` gets `pt_root()`. `TTBR1_EL1` stays unused, since the map is identity and low.
+- The sequence matters as much as the values: `dsb ish` after the table writes so they are visible to the table walker, `tlbi vmalle1`, `dsb ish`, then `isb`, then set `SCTLR_EL1.M`, then `isb` again. A missing barrier here usually works in QEMU and fails on hardware, so write the barrier comments for the hardware case.
+- Keep the map minimal and correct rather than complete: the EL1 image, its stack, and the UART. The firmware's own flash and SRAM do not need mapping, because the MMU is only being turned on at EL1.
+- Enable `SCTLR_EL1.C` and `.I` in the same step. Caches off with the MMU on is a configuration nobody wants and that hides bugs in the attributes.
+- Gate: EL1 still prints and still exits 0 with the MMU on, plus a check of the enabled `SCTLR_EL1` read back. A hang is the expected failure mode, and the harness's 30 second timeout is what will catch it.
 
 ## Batch log
+
+### Batch 17 (2026-10-06): translation table builder
+
+- `src/pagetable.c` builds an identity map with a 4 KiB granule and a 39-bit VA, choosing the largest block that fits: a 1 GiB block at level 1, a 2 MiB block at level 2, otherwise 4 KiB pages. Tables come from a caller-provided pool by bump pointer, so there is no heap and the worst case is known at link time.
+- Deliberately pure: it writes no system registers, which is what lets all 33 of its tests run on the host. That is the argument for doing it this way round, because on the target a wrong descriptor bit is a hang with nothing to read.
+- The encodings worth testing, all of which are easy to get backwards: a level 3 leaf is `0b11`, the same value that means *table* at levels 1 and 2, where a leaf is `0b01`; the access flag must be set or the first access faults with no handler here to explain it; execute-never is two bits, and clearing only one leaves the memory executable from the other privilege level; and shareability is meaningful for Normal memory but ignored for Device.
+- Errors are returned rather than walked past: a misaligned base, a range past the 39-bit VA space, an exhausted pool, and a region mapped inside an existing block, which is an overlap rather than a silent split.
+- Nothing is programmed into the MMU this row, so nothing can hang. 75 unit checks in total now.
+- Note for the next row: `src/pagetable.c` is in `SRCS`, so it is linked into the firmware as dead code until the EL1 image starts using it. Harmless, and it resolves when row 1 moves it into `KERNEL_SRCS`.
 
 ### Batch 16 (2026-10-06): refill the queue for M4
 
