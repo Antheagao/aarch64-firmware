@@ -51,6 +51,9 @@ CHECKS = [
      r"kernel: vector table installed: ok"),
     ("a fault at EL1 is reported by EL1, not escalated to EL3",
      r"trap: EL1 vector=4 \(sync_cur_spx\) EC=0x3c"),
+    ("an smc from EL1 is taken at EL3 through the lower-EL vector",
+     r"trap: EL3 vector=8 \(sync_lower_a64\) EC=0x17"),
+    ("EL3 returns control to EL1 after the smc", r"kernel: returned from smc: ok"),
     ("EL1 recovers from its own fault and keeps running",
      r"kernel: brk #0 trapped at EL1: EC=0x3c: ok"),
 ]

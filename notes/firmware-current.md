@@ -1,8 +1,8 @@
 # Firmware campaign: current queue
 
 **Last updated:** 2026-10-05.
-Batch 12 gave EL1 its own vectors on branch `feat/m3-el1-vectors`, by building one crash reporter into both images.
-Next batch: row 1, make an `smc #0` from EL1 land in the EL3 handler, which finishes M3 and tags `v0.3.0`.
+Batch 13 made `smc #0` from EL1 land at EL3 and return, on branch `feat/m3-smc`, finishing M3 and tagging `v0.3.0`.
+Next batch: row 1, the `docs/el-handoff.md` and `docs/riscv-vs-arm.md` write-ups.
 
 This file is the work queue for the `campaign-loop` skill in `.claude/skills/campaign-loop/SKILL.md`.
 Milestone specs live in `docs/ROADMAP.md`; this file only tracks order and state.
@@ -21,21 +21,34 @@ Parked rows and their unblock conditions are in `notes/firmware-future.md`, and 
 
 | # | Row | Scope | Gate |
 |---|---|---|---|
-| 1 | `feat(el3)`: handle `smc #0` from EL1 | EL3 synchronous handler for the lower-EL AArch64 vector, decoding `EC=0x17` | Check an EL3 trap report with `EC=0x17`; tag `v0.3.0` |
-| 2 | `docs`: `el-handoff.md` and `riscv-vs-arm.md` | Every bit set in `SCR_EL3`, `HCR_EL2` and `SPSR_EL3` and why; then map the same ideas onto RISC-V from the xv6-riscv work | Both files exist and the roadmap links them |
-| 3 | `ci`: `clang-tidy` and `cppcheck` job | Static analysis over `src/` and `include/`, with the checks that fire on this code either fixed or explicitly disabled with a reason | New CI job passes, and a deliberately introduced defect makes it fail |
-| 4 | [USER-GATED] Turn on "Automatically delete head branches" in the GitHub repo settings | The Claude session cannot delete remote branches, so merged branches stay until the owner deletes them | Merged branches disappear after merge |
+| 1 | `docs`: `el-handoff.md` and `riscv-vs-arm.md` | Every bit set in `SCR_EL3`, `HCR_EL2` and `SPSR_EL3` and why; then map the same ideas onto RISC-V from the xv6-riscv work | Both files exist and the roadmap links them |
+| 2 | `ci`: `clang-tidy` and `cppcheck` job | Static analysis over `src/` and `include/`, with the checks that fire on this code either fixed or explicitly disabled with a reason | New CI job passes, and a deliberately introduced defect makes it fail |
+| 3 | [USER-GATED] Turn on "Automatically delete head branches" in the GitHub repo settings | The Claude session cannot delete remote branches, so merged branches stay until the owner deletes them | Merged branches disappear after merge |
 
 ## Next batch plan (row 1)
 
-- Branch: `feat/m3-smc`.
-- Execute `smc #0` from the EL1 kernel. It lands at EL3 in the lower-EL AArch64 synchronous vector, which is index 8, and the existing decoder already names `EC=0x17`.
-- The EL3 handler currently parks anything it was not told to expect, so an SMC would hang the run. Teach it that a lower-EL synchronous exception is a request rather than a fault: report it, then return to EL1 by advancing `ELR_EL3` past the `smc`, the same stepping the self-tests use.
-- Keep it to the plumbing. This row proves the call arrives and control returns; the SMCCC argument convention and a real function table are M6's, so resist implementing PSCI here.
-- Watch the expected-trap hook: it is a single flag per image, and EL3's copy is now reached from two directions, its own self-tests and calls from EL1. If that gets confusing, the flag is the thing to replace, not to work around.
-- Gate: an EL3 trap report with `EC=0x17` and `vector=8`, the kernel printing a line after the SMC returns, and the run still exiting 0; then mark M3 done and tag `v0.3.0`.
+- Branch: `docs/el-handoff`.
+- `docs/el-handoff.md`: every bit set in `SCR_EL3`, `HCR_EL2`, `SCTLR_EL1` and `SPSR_EL3` during the hand-off, with the reason and the Arm ARM section title for each. The banking order discovered in batch 11 is the centrepiece: say plainly what goes wrong if `SCR_EL3.NS` is set last, because that is the part a reader cannot derive from the code alone.
+- `docs/riscv-vs-arm.md`: map the same ideas onto RISC-V from the xv6-riscv work. M/S/U against EL3/EL1/EL0, SBI against PSCI, `scause` against `ESR_ELx.EC`, `stvec` against `VBAR_ELx`, `satp` against `TTBRn_EL1`, PLIC against GIC, and LR/SC against LDXR/STXR.
+- Write from the code that exists, not from the roadmap's wish list: `satp` and `TTBRn_EL1` can be compared, but say that the MMU is still off here and that M4 owns it, rather than implying it is done.
+- Link both from `docs/ROADMAP.md` under M3.
+- Gate: both files exist, the roadmap links them, and every register bit either file claims is set can be found in `src/handoff.c`. Documentation that disagrees with the code is worse than none, so check it rather than assuming.
 
 ## Batch log
+
+### Batch 13 (2026-10-06): SMC from EL1, M3 done
+
+- The EL1 kernel executes `smc #0`, which lands at EL3 in the lower-EL AArch64 synchronous vector, index 8, decoding as `EC=0x17`.
+- The EL3 handler now distinguishes a request from a fault. A synchronous exception from a lower EL means EL1 called down on purpose, so EL3 reports it and steps over the `smc`, returning control; parking it, which is what an unexpected fault gets, would have hung the run.
+- Guarded with `#if TRAP_EL == 3`, because the EL1 copy of the same file must not treat its own lower-EL vector that way.
+- Deliberately plumbing only: the SMCCC argument convention and a real function table are M6's, with PSCI. The queue row said to resist implementing PSCI here, and that was the right call to keep.
+- The expected-trap flag the previous plan flagged as a worry turned out not to collide: EL3's self-tests all run before the `eret`, so the flag is clear by the time an SMC can arrive. Worth remembering when M6 adds real SMC traffic alongside it.
+- Learning: the first push failed all four boot jobs on `unused variable 'ec'`. The variable is only read inside the `#if TRAP_EL == 3` block, so the EL1 build had it unused, and the local gate compiled only `TRAP_EL=3` and never saw that configuration. A gate that checks one of two build configurations is checking half the code.
+  `make syntax-check` now compiles every file at both levels. Verified by reintroducing the variable: the gate exits 2 and names `src/trap.c` under `TRAP_EL=1`, where before it passed.
+- Learning, and the real content of this batch: the SMC arrived correctly the first time, and the bug was in the return. The handler advanced `ELR_EL3` by 4, copying the idiom the self-tests use, and EL1 then took a data abort with `DFSC=0x10` immediately after the call.
+  Arm ARM (DDI 0487), "Exception return": for an exception taken from `SVC`, `HVC` or `SMC`, `ELR` already holds the address *after* the instruction, because the call completed. `BRK` is the opposite: it is a debug exception and `ELR` points at the `BRK` itself, which is why stepping over it needs the +4. Adding 4 to an SMC return skips a real instruction.
+  The two cases sit four lines apart in the same function and want opposite handling, so the reason is written next to both rather than in a commit message nobody will reread.
+- M3 is complete: the image is loaded into DRAM, EL1 is entered Non-secure with a known state, EL1 handles its own exceptions, and a call from EL1 reaches EL3 and returns.
 
 ### Batch 12 (2026-10-06): EL1 vectors, one crash reporter for both levels
 

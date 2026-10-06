@@ -117,6 +117,26 @@ void trap_handler(struct trap_frame *tf)
 {
     report(tf);
 
+#if TRAP_EL == 3
+    /* A synchronous exception from a lower EL is a request, not a fault:
+     * EL1 called down on purpose, and parking it would hang the run. Step
+     * over the SMC and return, which resumes EL1 at the next instruction.
+     *
+     * Plumbing only. The SMCCC argument convention and a real function
+     * table belong to M6, with PSCI. */
+    if (tf->vector == VECTOR_SYNC_LOWER_A64 && ESR_EC(tf->esr) == ESR_EC_SMC) {
+        /* ELR is NOT advanced here, unlike the self-tests below. Arm ARM
+         * (DDI 0487), "Exception return": for an exception taken from SVC,
+         * HVC or SMC, ELR already holds the address *after* the instruction,
+         * because the call completed. BRK is the opposite: it is a debug
+         * exception and ELR points at the BRK itself, so stepping over it
+         * needs the +4. Adding 4 here skips a real instruction, and EL1
+         * resumes mid-sequence. */
+        kprintf("trap: SMC from a lower EL handled, returning\n");
+        return;
+    }
+#endif
+
     if (expect_trap) {
         expect_trap = false;
         last_expected_esr = tf->esr;
