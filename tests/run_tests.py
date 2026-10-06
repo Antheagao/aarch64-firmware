@@ -35,6 +35,10 @@ CHECKS = [
     ("the trap report names the exception class", r"EC=0x3c \(BRK instruction\)"),
     ("the trap report dumps the saved registers", r"trap:   x 0=0x[0-9a-f]{16}"),
     ("the handler steps over an expected fault", r"trap: expected, stepping over it"),
+    ("an unaligned load traps as a same-EL data abort",
+     r"selftest: unaligned load trapped: EC=0x25 DFSC=0x21: ok"),
+    ("the abort report decodes the fault status and address",
+     r"DFSC=0x21 \(alignment fault\)"),
     ("no UART waits timed out during boot", r"uart: tx timeouts = 0\b"),
     ("milestone 0 completes", r"milestone 0: boot OK"),
 ]
