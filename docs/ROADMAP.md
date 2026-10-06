@@ -13,7 +13,7 @@ For a gentler start, read the matching guide in Arm's free *Learn the architectu
 | ID | Milestone | Est. | Status |
 |---|---|---|---|
 | M0 | [Reset vector, C runtime, UART, CI](#m0-reset-vector-c-runtime-uart-ci) | - | Done |
-| M1 | [EL3 exceptions and crash reporter](#m1-el3-exceptions-and-crash-reporter) | 1 wk | In progress |
+| M1 | [EL3 exceptions and crash reporter](#m1-el3-exceptions-and-crash-reporter) | 1 wk | Done |
 | M2 | [CPU feature discovery](#m2-cpu-feature-discovery) | 3 days | Not started |
 | M3 | [EL3 to EL1 hand-off](#m3-el3-to-el1-hand-off) | 1 wk | Not started |
 | M4 | [MMU and caches](#m4-mmu-and-caches) | 1-2 wk | Not started |
@@ -51,8 +51,7 @@ This is fixed first, because every later milestone depends on readable crashes.
 - [x] Decode `ESR_EL3`: EC (exception class), IL, and ISS.
   For aborts, also decode DFSC and print `FAR_EL3`.
   Print a register dump.
-- [ ] Add a self-test that triggers `brk #0` and an unaligned load, recovers from each by advancing `ELR_EL3`, and continues.
-  `brk #0` is done; the unaligned load is the next queue row.
+- [x] Add a self-test that triggers `brk #0` and an unaligned load, recovers from each by advancing `ELR_EL3`, and continues.
 
 **Done when** the harness sees `EC=0x3c` (BRK) and `EC=0x25` with `DFSC=0x21` (alignment fault), and the firmware still reaches the end of the boot.
 

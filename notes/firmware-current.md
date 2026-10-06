@@ -1,8 +1,8 @@
 # Firmware campaign: current queue
 
 **Last updated:** 2026-10-05.
-Batch 5 added the trap frame, the `ESR_EL3` decode and a `brk #0` self-test on branch `feat/m1-trap-frame`.
-Next batch: row 1, the alignment fault self-test, which finishes M1 and tags `v0.1.0`.
+Batch 6 added the alignment fault self-test on branch `test/m1-alignment-fault`, finishing M1 and tagging `v0.1.0`.
+Next batch: row 1, host unit test scaffolding under `tests/unit/` with ASan and UBSan, first covering `kprintf` formatting.
 
 This file is the work queue for the `campaign-loop` skill in `.claude/skills/campaign-loop/SKILL.md`.
 Milestone specs live in `docs/ROADMAP.md`; this file only tracks order and state.
@@ -21,22 +21,32 @@ Parked rows and their unblock conditions are in `notes/firmware-future.md`, and 
 
 | # | Row | Scope | Gate |
 |---|---|---|---|
-| 1 | `test(el3)`: alignment fault self-test (M1, part 3) | Unaligned load recovered by advancing `ELR_EL3` | Check `EC=0x25 DFSC=0x21`; M1 marked done in `docs/ROADMAP.md`; tag `v0.1.0` |
-| 2 | `test`: host unit test scaffolding | `tests/unit/` runner, `make unit`, built with ASan and UBSan; first tests cover `kprintf` formatting | `make unit` passes locally and in a new CI job |
-| 3 | `feat(cpu)`: table-driven ID register decoder (M2) | Decode the ID registers listed in the roadmap into a printed feature table | Checks: SVE2, PAC, BTI, MTE present on `max` and absent on `cortex-a57`; tag `v0.2.0` |
-| 4 | [USER-GATED] Turn on "Automatically delete head branches" in the GitHub repo settings | The Claude session cannot delete remote branches, so merged branches stay until the owner deletes them | Merged branches disappear after merge |
+| 1 | `test`: host unit test scaffolding | `tests/unit/` runner, `make unit`, built with ASan and UBSan; first tests cover `kprintf` formatting | `make unit` passes locally and in a new CI job |
+| 2 | `feat(cpu)`: table-driven ID register decoder (M2) | Decode the ID registers listed in the roadmap into a printed feature table | Checks: SVE2, PAC, BTI, MTE present on `max` and absent on `cortex-a57`; tag `v0.2.0` |
+| 3 | [USER-GATED] Turn on "Automatically delete head branches" in the GitHub repo settings | The Claude session cannot delete remote branches, so merged branches stay until the owner deletes them | Merged branches disappear after merge |
 
 ## Next batch plan (row 1)
 
-- Branch: `test/m1-alignment-fault`.
-- Add a second self-test beside `selftest_brk`: arm the expected-trap hook, then do a deliberately unaligned 64-bit load, which faults because `SCTLR_EL3.A` is set and, with the MMU off, all memory is Device.
-  Build the misaligned pointer so the compiler cannot fold the access away: take the address of an aligned buffer, add 1, and go through a `volatile` pointer.
-- Expect `EC=0x25` (data abort, same EL) with `DFSC=0x21` (alignment fault), and `FAR_EL3` holding the misaligned address.
-  The decode and the `FAR`/`DFSC` printing already exist, so this row is the self-test plus its checks.
-- Watch for `-Wcast-align` style warnings under `-Werror`: the cast is deliberate, so if a warning appears, suppress it locally with a comment saying why rather than weakening the build flags.
-- Gate: new `CHECKS` lines for `EC=0x25`, `DFSC=0x21 (alignment fault)`, and the boot still reaching `milestone 0: boot OK`; then mark M1 done in `docs/ROADMAP.md` and tag `v0.1.0`.
+- Branch: `test/host-unit-tests`.
+- `tests/unit/` with a small runner and `make unit`, built for the host with `-fsanitize=address,undefined`.
+  The host compile gate from batch 4 already proves this code compiles off-target, so the step here is running it, not porting it.
+- First subject is `kprintf` formatting, which batch 5 showed is worth pinning down: it silently has no `-` flag, so `%-2u` prints as text.
+  Cover width, zero padding, `%d` with negatives, `%x`, `%p`, `%s` with NULL, `%%`, and an unknown conversion.
+- `kprintf` writes through `uart_putc`, so the runner needs a seam: build the unit test with a `uart_putc` that appends to a buffer instead of touching MMIO.
+  That keeps `kprintf.c` unchanged and compiled as-is, which is the point of testing it.
+- Decide and record whether the runner is C or driven from Python; C keeps the toolchain to one compiler and matches what a firmware team would expect.
+- Gate: `make unit` passes in a new CI job, and a deliberately wrong expectation makes it fail, proving the runner reports failure rather than always printing success.
 
 ## Batch log
+
+### Batch 6 (2026-10-06): alignment fault self-test, M1 done
+
+- `selftest_unaligned` reads a deliberately misaligned `uint64_t`, which faults because `SCTLR_EL3.A` is set and the MMU is off, so all memory is Device. The address is built through `uintptr_t` and read through a `volatile` pointer so the compiler cannot assume alignment, fold the load away, or split it into byte accesses that would not fault.
+- This exercises the abort path rather than the breakpoint path, so `FAR_EL3` and the DFSC decoding added last batch are now covered by a check: `EC=0x25` (data abort, same EL) with `DFSC=0x21` (alignment fault).
+- M1 is complete: vectors installed, a known EL3 reset state, a trap frame, a syndrome decode, a register dump, and recovery from two different deliberate faults.
+- Gate: two new `CHECKS` lines plus the full matrix, then `docs/ROADMAP.md` marks M1 done and `main` is tagged `v0.1.0`.
+- Learning: the first attempt wrote the misaligned access in C, and CI split on compiler: clang faulted as intended, GCC did not. Under `-mstrict-align` GCC lowers the access to byte loads, which never fault, and the self-test then read the stale ESR from the earlier `brk` and reported `EC=0x3c`. Writing the load as a single `ldr` in inline assembly makes it the hardware's decision rather than the compiler's.
+  This is exactly what the two-compiler matrix is for. A clang-only CI would have merged a test that proved nothing on the other toolchain.
 
 ### Batch 5 (2026-10-06): trap frame and ESR decode
 

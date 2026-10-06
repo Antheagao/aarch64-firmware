@@ -64,6 +64,30 @@ static void selftest_brk(void)
             ESR_EC(esr) == ESR_EC_BRK ? "ok" : "FAIL");
 }
 
+/* Fault on purpose a second way, through the abort path rather than the
+ * breakpoint path, so the FAR_EL3 and DFSC decoding is exercised too.
+ * SCTLR_EL3.A is set and the MMU is off, which makes all memory Device, so
+ * a single unaligned 64-bit load is an alignment fault. */
+static void selftest_unaligned(void)
+{
+    static uint64_t aligned[2];
+    uintptr_t addr = (uintptr_t)aligned + 1;
+    uint64_t discard = 0;
+
+    trap_expect_next();
+    /* The load is written in assembly on purpose. Expressed in C, the access
+     * is at the compiler's discretion: under -mstrict-align GCC lowers it to
+     * byte loads that never fault, so the test passed under clang and failed
+     * under GCC. One LDR is what the hardware must reject. */
+    __asm__ volatile("ldr %0, [%1]" : "=r"(discard) : "r"(addr) : "memory");
+    (void)discard;
+
+    uint64_t esr = trap_last_esr();
+    bool ok = ESR_EC(esr) == ESR_EC_DATA_ABORT && ESR_DFSC(ESR_ISS(esr)) == ESR_DFSC_ALIGNMENT;
+    kprintf("selftest: unaligned load trapped: EC=0x%02x DFSC=0x%02x: %s\n", ESR_EC(esr),
+            ESR_DFSC(ESR_ISS(esr)), ok ? "ok" : "FAIL");
+}
+
 /* First C code after reset; boot.S calls it on the primary CPU only. */
 void fw_main(void)
 {
@@ -76,6 +100,7 @@ void fw_main(void)
     report_el3_state();
     selftest_poll_timeout();
     selftest_brk();
+    selftest_unaligned();
 
     /* Milestones 1-8 in docs/ROADMAP.md grow from here. */
 
