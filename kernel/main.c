@@ -46,6 +46,41 @@ static void selftest_smc(void)
     kprintf("kernel: returned from smc: ok\n");
 }
 
+/* The permissions are only real if the hardware refuses the write. */
+static const volatile uint64_t rodata_value = 0x1234;
+
+static void selftest_rodata_write(void)
+{
+    /* const is cast away on purpose: the point is that the MMU stops this,
+     * not the compiler. volatile keeps the store from being optimised out. */
+    volatile uint64_t *writable = (volatile uint64_t *)(uintptr_t)&rodata_value;
+
+    trap_expect_next();
+    *writable = 0xdead;
+
+    uint64_t esr = trap_last_esr();
+    bool ok = ESR_EC(esr) == ESR_EC_DATA_ABORT && ESR_DFSC(ESR_ISS(esr)) == ESR_DFSC_PERM_L3;
+    kprintf("kernel: rodata write trapped: EC=0x%02x DFSC=0x%02x: %s\n", ESR_EC(esr),
+            ESR_DFSC(ESR_ISS(esr)), ok ? "ok" : "FAIL");
+}
+
+/* In .data, so it is mapped writable and execute-never. The contents are a
+ * NOP, which would run perfectly well if the page allowed it: the fault is
+ * the mapping's doing, not the data's. */
+static uint64_t data_code[2] = {0xd503201fUL, 0xd65f03c0UL}; /* nop; ret */
+
+static void selftest_execute_data(void)
+{
+    void (*volatile call_into_data)(void) = (void (*)(void))(uintptr_t)data_code;
+
+    trap_expect_next();
+    call_into_data();
+
+    uint64_t esr = trap_last_esr();
+    kprintf("kernel: execute from data trapped: EC=0x%02x: %s\n", ESR_EC(esr),
+            ESR_EC(esr) == ESR_EC_INSN_ABORT ? "ok" : "FAIL");
+}
+
 void kernel_main(void)
 {
     /* The firmware already brought the UART up, but this image must not
@@ -71,6 +106,8 @@ void kernel_main(void)
         semihost_exit(1);
 
     selftest_el1_brk();
+    selftest_rodata_write();
+    selftest_execute_data();
     selftest_smc();
 
     semihost_exit(0);

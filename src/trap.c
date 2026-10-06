@@ -140,9 +140,20 @@ void trap_handler(struct trap_frame *tf)
     if (expect_trap) {
         expect_trap = false;
         last_expected_esr = tf->esr;
-        /* A64 instructions are 4 bytes, and ELR points at the one that
-         * faulted, so stepping over it resumes after the deliberate fault. */
-        tf->elr += 4;
+        if (ESR_EC(tf->esr) == ESR_EC_INSN_ABORT) {
+            /* An instruction abort cannot be stepped over: ELR points at the
+             * address that could not be fetched, so ELR+4 is still inside
+             * memory this CPU may not execute and the fault just repeats.
+             * The faulting fetch was a call, so x30 holds the address after
+             * it, and returning there makes a failed call behave like one
+             * that returned. */
+            tf->elr = tf->x[30];
+        } else {
+            /* A64 instructions are 4 bytes, and ELR points at the one that
+             * faulted, so stepping over it resumes after the deliberate
+             * fault. */
+            tf->elr += 4;
+        }
         kprintf("trap: expected, stepping over it\n");
         return;
     }
