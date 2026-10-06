@@ -1,8 +1,8 @@
 # Firmware campaign: current queue
 
 **Last updated:** 2026-10-05.
-Batch 7 added host unit tests under `tests/unit/` with ASan and UBSan on branch `test/host-unit-tests`.
-Next batch: row 1, the table-driven ID register decoder (M2), which also gets host unit tests now that the harness exists.
+Batch 8 added the table-driven ID register decoder (M2) on branch `feat/m2-id-registers`, tagging `v0.2.0`.
+The queue now holds only the user-gated row, so the next session should run the close-out in `.claude/skills/campaign-loop/SKILL.md` or pull a row forward from `notes/firmware-future.md`.
 
 This file is the work queue for the `campaign-loop` skill in `.claude/skills/campaign-loop/SKILL.md`.
 Milestone specs live in `docs/ROADMAP.md`; this file only tracks order and state.
@@ -21,21 +21,24 @@ Parked rows and their unblock conditions are in `notes/firmware-future.md`, and 
 
 | # | Row | Scope | Gate |
 |---|---|---|---|
-| 1 | `feat(cpu)`: table-driven ID register decoder (M2) | Decode the ID registers listed in the roadmap into a printed feature table | Checks: SVE2, PAC, BTI, MTE present on `max` and absent on `cortex-a57`; tag `v0.2.0` |
-| 2 | [USER-GATED] Turn on "Automatically delete head branches" in the GitHub repo settings | The Claude session cannot delete remote branches, so merged branches stay until the owner deletes them | Merged branches disappear after merge |
+| 1 | [USER-GATED] Turn on "Automatically delete head branches" in the GitHub repo settings | The Claude session cannot delete remote branches, so merged branches stay until the owner deletes them | Merged branches disappear after merge |
 
-## Next batch plan (row 1)
+## Next batch plan
 
-- Branch: `feat/m2-id-registers`.
-- Add `src/cpuid.c` with the table-driven decoder `docs/CODING_STANDARDS.md` calls for: a table of `{register, shift, width, signed, name}` rows walked by one function, so adding a feature is a row rather than another `if`.
-- Decode `ID_AA64PFR0_EL1`, `ID_AA64PFR1_EL1`, `ID_AA64ISAR0/1/2_EL1`, `ID_AA64MMFR0/1/2_EL1`, `ID_AA64DFR0_EL1`, and `ID_AA64ZFR0_EL1` only when SVE is present.
-- Read the ID field rules from the Arm ARM rather than guessing: most fields are unsigned, some are signed, and `0b1111` means "not present" for the signed ones.
-  Getting that wrong silently reports features backwards, so it is the part to check against the manual line by line.
-- Print a feature table covering EL2/EL3, AdvSIMD, SVE/SVE2, SME, MTE level, PAC (APA/API), BTI, RME, SPE, AMU, PMU version, PA range, and the supported granules.
-- Unit-test the field extraction on the host with the harness added in batch 7: feed known register values and assert the decoded names, including the signed-field and "not present" cases. That is cheap now and catches exactly the errors the manual warns about.
-- Gate: checks that SVE2, PAC, BTI and MTE are reported present on `CPU=max` and absent on `CPU=cortex-a57`, plus `make unit`; then tag `v0.2.0`.
+The queue holds only a user-gated row, which is a stop condition for the loop.
+M3 is unblocked now that M2 is merged and tagged `v0.2.0`: move it out of `notes/firmware-future.md` and split it into PR-sized rows, the first being the embedded EL1 image and the `SCR_EL3` / `SPSR_EL3` configuration for the `eret`.
 
 ## Batch log
+
+### Batch 8 (2026-10-06): ID register decoder, M2 done
+
+- `src/cpuid.c` decodes the ID registers through one table of `{name, register, shift, width, kind}` rows walked by one function, as `docs/CODING_STANDARDS.md` asks. Adding a feature is a row.
+- The decode is split from the register reads on purpose: `cpuid_print` is pure and runs on the host, and only `cpuid_read` is `#ifdef __aarch64__`. That is what makes the field rules testable.
+- 24 host unit tests cover the rules the Arm ARM warns about, because each one fails silently rather than loudly: a signed field where `0b1111` means absent and `0` means present, the 4K and 64K granule fields where `0b1111` means unsupported, and the 16K field where `0` means unsupported instead.
+- `tests/run_tests.py` now applies per-CPU expectations. The same firmware is asserted to report SVE2, BTI and PAC present on `-cpu max` and absent on `-cpu cortex-a57`, which is the actual claim M2 makes.
+- `kprintf` gained width support for `%s`, which it had parsed and ignored, so the feature table lines up. Covered by two new unit tests.
+- MTE is asserted absent on `cortex-a57` only. The machine line does not set `mte=on`, so asserting it present on `max` would assert a QEMU default rather than a decode; M7 owns turning it on.
+- Learning: the host compile gate caught `cpuid_read` being declared inside `#ifdef __aarch64__`, which left `main.c` calling an undeclared function on the host. The guard belongs on the definition, not the declaration.
 
 ### Batch 7 (2026-10-06): host unit tests
 

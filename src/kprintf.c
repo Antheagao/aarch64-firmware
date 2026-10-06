@@ -55,7 +55,14 @@ void kprintf(const char *fmt, ...)
             break;
         case 's': {
             const char *s = va_arg(ap, const char *);
-            uart_puts(s ? s : "(null)");
+            if (!s)
+                s = "(null)";
+            int n = 0;
+            while (s[n])
+                n++;
+            while (width-- > n)
+                uart_putc(pad);
+            uart_puts(s);
             break;
         }
         case 'd': {
