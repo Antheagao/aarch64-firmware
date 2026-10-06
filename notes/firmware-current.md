@@ -1,8 +1,8 @@
 # Firmware campaign: current queue
 
 **Last updated:** 2026-10-05.
-Batch 2 added `.clang-format`, `make format` / `make format-check`, and a CI format job on branch `build/clang-format`.
-Next batch: row 1, put `SCTLR_EL3`, `SCR_EL3` and `CPTR_EL3` into a known reset state and install a vector table in `VBAR_EL3` (M1, part 1).
+Batch 3 put the EL3 control registers into a known reset state and installed the vector table in `VBAR_EL3` on branch `feat/m1-el3-reset-state`.
+Next batch: row 1, save a trap frame and decode `ESR_EL3` so a crash prints EC, IL, ISS and a register dump (M1, part 2).
 
 This file is the work queue for the `campaign-loop` skill in `.claude/skills/campaign-loop/SKILL.md`.
 Milestone specs live in `docs/ROADMAP.md`; this file only tracks order and state.
@@ -21,27 +21,42 @@ Parked rows and their unblock conditions are in `notes/firmware-future.md`, and 
 
 | # | Row | Scope | Gate |
 |---|---|---|---|
-| 1 | `feat(el3)`: known reset state and vector table (M1, part 1) | Set `SCTLR_EL3`, `SCR_EL3`, `CPTR_EL3` at reset; add `src/vectors.S` and install `VBAR_EL3` | New check prints `VBAR_EL3` equal to the `vectors` symbol |
-| 2 | `feat(el3)`: trap frame and ESR decode (M1, part 2) | Save x0-x30, `ELR_EL3`, `SPSR_EL3`; decode EC, IL, ISS, DFSC; print `FAR_EL3` and a register dump | `brk #0` self-test reports `EC=0x3c` and boot continues |
-| 3 | `test(el3)`: alignment fault self-test (M1, part 3) | Unaligned load recovered by advancing `ELR_EL3` | Check `EC=0x25 DFSC=0x21`; M1 marked done in `docs/ROADMAP.md`; tag `v0.1.0` |
+| 1 | `feat(el3)`: trap frame and ESR decode (M1, part 2) | Save x0-x30, `ELR_EL3`, `SPSR_EL3`; decode EC, IL, ISS, DFSC; print `FAR_EL3` and a register dump | `brk #0` self-test reports `EC=0x3c` and boot continues |
+| 2 | `test(el3)`: alignment fault self-test (M1, part 3) | Unaligned load recovered by advancing `ELR_EL3` | Check `EC=0x25 DFSC=0x21`; M1 marked done in `docs/ROADMAP.md`; tag `v0.1.0` |
+| 3 | `build`: host syntax-check target | `make syntax-check` runs `gcc -fsyntax-only -Wall -Wextra -Werror` over `src/*.c` on the host, so C errors are caught without a cross toolchain | New CI job, and the target fails on a deliberately broken string literal |
 | 4 | `test`: host unit test scaffolding | `tests/unit/` runner, `make unit`, built with ASan and UBSan; first tests cover `kprintf` formatting | `make unit` passes locally and in a new CI job |
 | 5 | `feat(cpu)`: table-driven ID register decoder (M2) | Decode the ID registers listed in the roadmap into a printed feature table | Checks: SVE2, PAC, BTI, MTE present on `max` and absent on `cortex-a57`; tag `v0.2.0` |
 | 6 | [USER-GATED] Turn on "Automatically delete head branches" in the GitHub repo settings | The Claude session cannot delete remote branches, so merged branches stay until the owner deletes them | Merged branches disappear after merge |
 
 ## Next batch plan (row 1)
 
-- Branch: `feat/m1-el3-reset-state`.
-- At reset, before anything else in `boot.S`, put the EL3 control registers into a known state.
-  Hardware resets many of their bits to UNKNOWN values, so firmware must write them rather than assume.
-  `SCTLR_EL3`: start from the architected reset value with `A` (alignment check) and `SA` (stack alignment check) set, `M`, `C` and `I` clear while the MMU is off.
-  `SCR_EL3`: `NS` clear (secure), `RW` set (lower EL is AArch64), `EA`/`FIQ`/`IRQ` routed as the roadmap needs.
-  `CPTR_EL3`: `TFP` clear is not needed yet because the build is `-mgeneral-regs-only`, so set it to trap and revisit in M7.
-- Add `src/vectors.S`: 16 entries, each `0x80` bytes, aligned to 2 KiB (`.balign 2048`), in the four groups the Arm ARM lists under "Exception vectors".
-  Each entry can branch to a shared stub for now; the trap frame and decode land in row 2.
-- Install it with `VBAR_EL3` and `isb()`.
-- Gate: a new `CHECKS` line prints `VBAR_EL3` and the harness asserts it equals the `vectors` symbol address, plus the full `make test` matrix.
+- Branch: `feat/m1-trap-frame`.
+- Replace the `b el3_park` stub in each `vector_entry` with a save sequence: push x0-x30 plus `ELR_EL3` and `SPSR_EL3` onto the stack as a trap frame, pass its address in x0, and call a C handler.
+  Use `stp`/`ldp` pairs, keep SP 16-byte aligned, and pass the vector index so the handler can name which of the 16 entries fired.
+- Define the frame as a C struct and check its layout against the assembly with `_Static_assert` on `sizeof` and `offsetof`, as `docs/CODING_STANDARDS.md` requires.
+- Decode `ESR_EL3` in C: EC bits [31:26], IL bit [25], ISS bits [24:0].
+  For EC 0x24/0x25 (data abort) also print `FAR_EL3` and the DFSC in ISS bits [5:0].
+  Name the common EC values from the Arm ARM "ESR_ELx, Exception Syndrome Register" table rather than printing the raw number alone.
+- Print the register dump through `kprintf`, four registers per line.
+- Self-test: execute `brk #0`, which raises EC 0x3c, then recover by advancing `ELR_EL3` past the instruction (`elr += 4`) so the boot continues.
+  `brk` is the cheapest exception to raise deliberately and needs no MMU.
+- Gate: a `CHECKS` line matching `EC=0x3c` and the existing `milestone 0: boot OK` line still printing afterwards, proving the handler returned rather than hung, plus the full `make test` matrix.
 
 ## Batch log
+
+### Batch 3 (2026-10-05): EL3 known reset state and vector table
+
+- `include/sysreg_bits.h`: assembly-safe field definitions for `SCTLR_EL3`, `SCR_EL3`, `CPTR_EL3` and the `VBAR_EL3` alignment, named after the Arm ARM. It uses the TF-A `UL()` trick so one header serves both `.S` and `.c`.
+- `src/boot.S` now writes the EL3 control registers before anything else, because hardware resets many of their bits to UNKNOWN: `SCTLR_EL3` = RES1 | A | SA (MMU, caches and icache off), `SCR_EL3` = RES1 | RW (lower EL is AArch64, still Secure), `CPTR_EL3` = TFP (FP and SIMD trap, matching `-mgeneral-regs-only`).
+- `src/vectors.S`: the 16-entry, 0x80-stride, 2 KiB-aligned table, each entry named so a disassembly says which exception fired. Every entry parks for now; row 1 of the queue turns it into a real reporter.
+- `linker.ld` aligns `.text.vectors` to 2048 in the link as well, so the table's alignment does not rest on the assembler alone.
+- New checks: `VBAR_EL3` is printed, equals the `vectors` symbol, is 2 KiB aligned, and `SCTLR_EL3.A`/`.SA` read back set.
+- Verified the constants against Trusted Firmware-A's published values before pushing: `SCTLR_EL3_RES1` computes to 0x30C50830, `SCR_EL3` to 0x430, `CPTR_EL3` to 0x400.
+- Gate: the four new `CHECKS` lines, run by the PR's CI matrix (GCC and LLVM, `CPU=max` and `CPU=cortex-a57`) plus the `clang-format` job.
+  This machine has no cross toolchain, QEMU or root, so CI is the only place the matrix runs; the merge is the record that it passed.
+- Learning: the first push failed all four boot jobs. A heredoc turned the `\n` escapes in the new `kprintf` calls into real newlines, so every C string literal was unterminated. `clang-format` passed anyway, which is the point: a formatter is not a compiler.
+  Found that this machine does have a host `gcc` in WSL, and `gcc -fsyntax-only -Wall -Wextra -Werror -ffreestanding -Iinclude src/*.c` catches exactly this class of error with no cross toolchain, because it stops before the AArch64 inline asm is assembled. Added as queue row 3.
+- Learning: this closes the defect the M0 code documented in a TODO. A fault used to vector to offset 0x200 from a zero `VBAR_EL3`, which is the middle of `kprintf`, so the firmware's own crash path ran into unrelated code.
 
 ### Batch 2 (2026-10-05): clang-format and a CI format gate
 

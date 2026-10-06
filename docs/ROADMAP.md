@@ -13,7 +13,7 @@ For a gentler start, read the matching guide in Arm's free *Learn the architectu
 | ID | Milestone | Est. | Status |
 |---|---|---|---|
 | M0 | [Reset vector, C runtime, UART, CI](#m0-reset-vector-c-runtime-uart-ci) | - | Done |
-| M1 | [EL3 exceptions and crash reporter](#m1-el3-exceptions-and-crash-reporter) | 1 wk | Not started |
+| M1 | [EL3 exceptions and crash reporter](#m1-el3-exceptions-and-crash-reporter) | 1 wk | In progress |
 | M2 | [CPU feature discovery](#m2-cpu-feature-discovery) | 3 days | Not started |
 | M3 | [EL3 to EL1 hand-off](#m3-el3-to-el1-hand-off) | 1 wk | Not started |
 | M4 | [MMU and caches](#m4-mmu-and-caches) | 1-2 wk | Not started |
@@ -37,21 +37,21 @@ In particular, know why `.data` has different load and run addresses, and why th
 
 ## M1: EL3 exceptions and crash reporter
 
-Right now `VBAR_EL3` still holds its reset value, 0.
-A synchronous exception at EL3 vectors to offset 0x200 from it, which is the middle of `kprintf`, so a crash looks like garbage output or a hang.
-You can check this yourself in GDB with `p/x $VBAR_EL3` and `info symbol 0x200`.
-Fix it first, because every later milestone depends on readable crashes.
+Before this milestone `VBAR_EL3` still held its reset value, 0.
+A synchronous exception at EL3 vectors to offset 0x200 from it, which was the middle of `kprintf`, so a crash looked like garbage output or a hang.
+You can see the old behavior in GDB with `p/x $VBAR_EL3` and `info symbol 0x200`.
+This is fixed first, because every later milestone depends on readable crashes.
 
-- Write `src/vectors.S`: a 2 KiB-aligned table of 16 entries, 0x80 bytes each.
+- [x] Write `src/vectors.S`: a 2 KiB-aligned table of 16 entries, 0x80 bytes each.
   The four groups are current EL with SP0, current EL with SPx, lower EL AArch64, and lower EL AArch32, each with sync, IRQ, FIQ and SError entries.
   Install it with `VBAR_EL3`.
-- On entry, save x0-x30, `ELR_EL3` and `SPSR_EL3` into a trap frame on the stack, then call a C handler.
-- Decode `ESR_EL3`: EC (exception class), IL, and ISS.
+- [x] At reset, put `SCTLR_EL3`, `SCR_EL3` and `CPTR_EL3` into a known state, because real hardware resets many of their bits to UNKNOWN values.
+  Turn on alignment checking with `SCTLR_EL3.A`.
+- [ ] On entry, save x0-x30, `ELR_EL3` and `SPSR_EL3` into a trap frame on the stack, then call a C handler.
+- [ ] Decode `ESR_EL3`: EC (exception class), IL, and ISS.
   For aborts, also decode DFSC and print `FAR_EL3`.
   Print a register dump.
-- At reset, put `SCTLR_EL3`, `SCR_EL3` and `CPTR_EL3` into a known state, because real hardware resets many of their bits to UNKNOWN values.
-  Turn on alignment checking with `SCTLR_EL3.A`.
-- Add a self-test that triggers `brk #0` and an unaligned load, recovers from each by advancing `ELR_EL3`, and continues.
+- [ ] Add a self-test that triggers `brk #0` and an unaligned load, recovers from each by advancing `ELR_EL3`, and continues.
 
 **Done when** the harness sees `EC=0x3c` (BRK) and `EC=0x25` with `DFSC=0x21` (alignment fault), and the firmware still reaches the end of the boot.
 
