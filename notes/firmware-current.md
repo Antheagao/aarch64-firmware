@@ -1,8 +1,8 @@
 # Firmware campaign: current queue
 
 **Last updated:** 2026-10-05.
-Batch 8 added the table-driven ID register decoder (M2) on branch `feat/m2-id-registers`, tagging `v0.2.0`.
-The queue now holds only the user-gated row, so the next session should run the close-out in `.claude/skills/campaign-loop/SKILL.md` or pull a row forward from `notes/firmware-future.md`.
+Batch 9 refilled the queue: M2 shipped and tagged `v0.2.0`, which unblocked M3, so M3 is split into PR-sized rows below.
+Next batch: row 1, embed an EL1 image in the firmware and copy it to DRAM.
 
 This file is the work queue for the `campaign-loop` skill in `.claude/skills/campaign-loop/SKILL.md`.
 Milestone specs live in `docs/ROADMAP.md`; this file only tracks order and state.
@@ -21,14 +21,31 @@ Parked rows and their unblock conditions are in `notes/firmware-future.md`, and 
 
 | # | Row | Scope | Gate |
 |---|---|---|---|
-| 1 | [USER-GATED] Turn on "Automatically delete head branches" in the GitHub repo settings | The Claude session cannot delete remote branches, so merged branches stay until the owner deletes them | Merged branches disappear after merge |
+| 1 | `feat(el1)`: embed an EL1 image and copy it to DRAM | A minimal second image linked at 0x4000_0000, embedded with `.incbin`, copied to DRAM by the firmware the way TF-A BL2 loads BL33 | Check that the copied image's first words match the embedded ones; no EL change yet |
+| 2 | `feat(el3)`: drop to EL1 | `SCR_EL3` (NS, RW), `HCR_EL2.RW`, reset state for `SCTLR_EL1`, `SPSR_EL3` = EL1h with interrupts masked, entry in `ELR_EL3`, then `eret` | Check `kernel: running at EL1 (Non-secure)` |
+| 3 | `feat(el1)`: EL1 vector table and crash reporter | Reuse the M1 trap frame and decode behind `VBAR_EL1`; a deliberate fault at EL1 is reported by EL1, not EL3 | Check an EL1 trap report, and that the boot continues |
+| 4 | `feat(el3)`: handle `smc #0` from EL1 | EL3 synchronous handler for the lower-EL AArch64 vector, decoding `EC=0x17` | Check an EL3 trap report with `EC=0x17`; tag `v0.3.0` |
+| 5 | `docs`: `el-handoff.md` and `riscv-vs-arm.md` | Every bit set in `SCR_EL3`, `HCR_EL2` and `SPSR_EL3` and why; then map the same ideas onto RISC-V from the xv6-riscv work | Both files exist and the roadmap links them |
+| 6 | `ci`: `clang-tidy` and `cppcheck` job | Static analysis over `src/` and `include/`, with the checks that fire on this code either fixed or explicitly disabled with a reason | New CI job passes, and a deliberately introduced defect makes it fail |
+| 7 | [USER-GATED] Turn on "Automatically delete head branches" in the GitHub repo settings | The Claude session cannot delete remote branches, so merged branches stay until the owner deletes them | Merged branches disappear after merge |
 
-## Next batch plan
+## Next batch plan (row 1)
 
-The queue holds only a user-gated row, which is a stop condition for the loop.
-M3 is unblocked now that M2 is merged and tagged `v0.2.0`: move it out of `notes/firmware-future.md` and split it into PR-sized rows, the first being the embedded EL1 image and the `SCR_EL3` / `SPSR_EL3` configuration for the `eret`.
+- Branch: `feat/m3-el1-image`.
+- Build a second, minimal image linked at `0x4000_0000` (non-secure DRAM) with its own linker script and entry point, printing one line over the same PL011 so it is visible without any EL1 UART work.
+- Embed it in the firmware with `.incbin` and copy it to DRAM at boot, the way TF-A BL2 loads BL33. The copy is necessary, not ceremonial: non-secure EL1 cannot fetch from secure flash.
+- Keep this row to the load. No exception level change yet, so a failure here is a copy bug and nothing else.
+- Watch the build: two images in one repo means a second link step and a second set of flags, so keep the Makefile honest rather than adding a special case for every file.
+- Gate: a check that the first words at the DRAM address match the embedded image, plus the full matrix.
 
 ## Batch log
+
+### Batch 9 (2026-10-06): refill the queue for M3
+
+- No code. M2 merging and tagging `v0.2.0` met M3's unblock condition, so M3 moved out of `notes/firmware-future.md` and into the queue as five PR-sized rows: load the EL1 image, drop to EL1, give EL1 its own vectors, handle `smc #0` at EL3, then the two write-ups.
+- The `clang-tidy` and `cppcheck` row is also unblocked now that `.clang-format` is merged, so it joins the queue after M3 rather than staying parked with a condition that is already met.
+- Added a parked follow-on row for turning `mte=on` on the machine and asserting MTE present, with the condition that M7 enables MTE first. Batch 8 deliberately did not assert it; recording why keeps that from reading as an oversight later.
+- `notes/firmware-future.md` gained the rule that a parked row without an unblock condition is one nobody picks up again, because two of its rows had conditions written against row numbers that have since shifted.
 
 ### Batch 8 (2026-10-06): ID register decoder, M2 done
 
