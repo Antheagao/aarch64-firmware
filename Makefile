@@ -44,7 +44,7 @@ ASFLAGS := -g -Iinclude -MMD -MP
 LDFLAGS := -nostdlib -static -T linker.ld
 
 SRCS := $(wildcard src/*.c src/*.S)
-KERNEL_SRCS := kernel/start.S kernel/main.c src/uart.c src/kprintf.c
+KERNEL_SRCS := kernel/start.S kernel/main.c src/uart.c src/kprintf.c src/semihost.c
 OBJS := $(patsubst src/%,$(BUILD)/%.o,$(SRCS))
 
 QEMU      ?= qemu-system-aarch64

@@ -46,6 +46,29 @@
 #define CPTR_EL3_TAM   (UL(1) << 30) /* trap activity monitor access */
 #define CPTR_EL3_TCPAC (UL(1) << 31) /* trap CPACR_EL1 and CPTR_EL2 access */
 
+/* SCTLR_EL1, System Control Register (EL1). Same argument as SCTLR_EL3: the
+ * architecture resets many of these bits to UNKNOWN, so firmware writes them
+ * before handing EL1 over. */
+#define SCTLR_EL1_M  (UL(1) << 0)  /* MMU enable */
+#define SCTLR_EL1_A  (UL(1) << 1)  /* alignment check enable */
+#define SCTLR_EL1_C  (UL(1) << 2)  /* data cache enable */
+#define SCTLR_EL1_SA (UL(1) << 3)  /* SP alignment check enable */
+#define SCTLR_EL1_I  (UL(1) << 12) /* instruction cache enable */
+#define SCTLR_EL1_RES1 \
+    ((UL(1) << 29) | (UL(1) << 28) | (UL(1) << 23) | (UL(1) << 22) | (UL(1) << 20) | (UL(1) << 11))
+
+/* HCR_EL2, Hypervisor Configuration Register. Its controls apply to
+ * Non-secure EL1 even when EL2 is skipped entirely. */
+#define HCR_EL2_RW (UL(1) << 31) /* EL1 is AArch64 */
+
+/* SPSR_EL3: the PSTATE eret installs. Arm ARM (DDI 0487), "Saved Program
+ * Status Registers". M[3:0] selects the level and stack pointer. */
+#define SPSR_EL3_M_EL1H 0x5          /* EL1 using SP_EL1 */
+#define SPSR_EL3_F      (UL(1) << 6) /* FIQ masked */
+#define SPSR_EL3_I      (UL(1) << 7) /* IRQ masked */
+#define SPSR_EL3_A      (UL(1) << 8) /* SError masked */
+#define SPSR_EL3_D      (UL(1) << 9) /* debug exceptions masked */
+
 /* VBAR_EL3 holds the vector base address; bits [10:0] are RES0, so the table
  * must be aligned to 2 KiB. Arm ARM (DDI 0487), "Exception vectors". */
 #define VBAR_ALIGN      0x800

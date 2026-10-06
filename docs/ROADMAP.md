@@ -15,7 +15,7 @@ For a gentler start, read the matching guide in Arm's free *Learn the architectu
 | M0 | [Reset vector, C runtime, UART, CI](#m0-reset-vector-c-runtime-uart-ci) | - | Done |
 | M1 | [EL3 exceptions and crash reporter](#m1-el3-exceptions-and-crash-reporter) | 1 wk | Done |
 | M2 | [CPU feature discovery](#m2-cpu-feature-discovery) | 3 days | Done |
-| M3 | [EL3 to EL1 hand-off](#m3-el3-to-el1-hand-off) | 1 wk | Not started |
+| M3 | [EL3 to EL1 hand-off](#m3-el3-to-el1-hand-off) | 1 wk | In progress |
 | M4 | [MMU and caches](#m4-mmu-and-caches) | 1-2 wk | Not started |
 | M5 | [GICv3 and the generic timer](#m5-gicv3-and-the-generic-timer) | 1 wk | Not started |
 | M6 | [PSCI and multi-core bring-up](#m6-psci-and-multi-core-bring-up) | 1-2 wk | Not started |
@@ -77,18 +77,26 @@ MTE is asserted absent on `cortex-a57` only: the machine line does not set `mte=
 
 This is what boot firmware is for: set up the lower exception levels and hand off to the next image.
 
-- Build a small EL1 kernel linked at `0x4000_0000` (non-secure DRAM).
+- [x] Build a small EL1 kernel linked at `0x4000_0000` (non-secure DRAM).
   Embed it in the firmware image with `.incbin`.
   Firmware copies it to DRAM, the way TF-A BL2 loads BL33.
   Non-secure EL1 cannot fetch from secure flash, so it has to be copied.
-- Configure `SCR_EL3` (NS, RW, and the trap controls you need), `HCR_EL2.RW`, the reset state of `SCTLR_EL2` and `SCTLR_EL1`, and timer access in `CNTHCTL_EL2`.
+- [x] Configure `SCR_EL3` (NS, RW, and the trap controls you need), `HCR_EL2.RW`, the reset state of `SCTLR_EL2` and `SCTLR_EL1`, and timer access in `CNTHCTL_EL2`.
   Set `SPSR_EL3` to EL1h with interrupts masked, put the entry point in `ELR_EL3`, then `eret`.
   Even if you skip EL2, its controls still apply to non-secure EL1, and finding that out is part of the exercise.
-- Give EL1 its own vector table (`VBAR_EL1`) and crash reporter.
-  Most of the M1 code should be reusable.
-- Make an `smc #0` from EL1 land in the EL3 handler.
 
-**Done when** the harness sees `kernel: running at EL1 (Non-secure)` and an EL3 trap report with `EC=0x17` (SMC from AArch64).
+  The ordering turned out to be the real content.
+  With `FEAT_SEL2`, which `-cpu max` implements, `HCR_EL2` and `SCTLR_EL1` are banked by security state and `SCR_EL3.NS` selects which bank EL3 sees.
+  So `SCR_EL3.NS` is set *first* and those registers are written afterwards; doing it the other way configures the Secure copies and leaves the Non-secure ones UNKNOWN.
+  `CNTHCTL_EL2` is not needed until M5 introduces the timer.
+- [ ] Give EL1 its own vector table (`VBAR_EL1`) and crash reporter.
+- [ ] Make an `smc #0` from EL1 land in the EL3 handler.
+  Most of the M1 code should be reusable.
+
+**Done when** the harness sees `kernel: running at EL1` and an EL3 trap report with `EC=0x17` (SMC from AArch64).
+
+The security state is reported by EL3 rather than by the kernel, as `el3: entering EL1 (Non-secure)`.
+EL1 cannot read `SCR_EL3`, so a kernel claiming to be Non-secure would be repeating what it was told rather than observing anything.
 
 **Write-ups:**
 - `docs/el-handoff.md` explains every bit set in `SCR_EL3`, `HCR_EL2` and `SPSR_EL3`, and why.

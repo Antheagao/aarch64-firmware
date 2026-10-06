@@ -44,6 +44,9 @@ CHECKS = [
      r"kernel: copied to 0x0000000040000000: ok"),
     ("no UART waits timed out during boot", r"uart: tx timeouts = 0\b"),
     ("milestone 0 completes", r"milestone 0: boot OK"),
+    ("EL3 reports the security state it configured, which only EL3 can know",
+     r"el3: entering EL1 \(Non-secure\) at 0x0000000040000000"),
+    ("the EL1 image runs at EL1 after the eret", r"kernel: running at EL1"),
 ]
 
 
